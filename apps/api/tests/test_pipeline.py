@@ -229,3 +229,26 @@ def test_failed_eval_feedback_shows_input_expected_and_actual(factory, fake, sbx
     assert "eval inline: output does not contain expect.contains" in fix_prompt
     assert '"App.tsx"' in fix_prompt and 'expected: {"contains": {"count": 5}}' in fix_prompt
     assert 'actual: {"findings": [{"file": "App.tsx"' in fix_prompt and '"count": 1' in fix_prompt
+
+
+def test_identical_failures_stop_the_repair_loop_and_history_is_recorded(factory, fake, sbx):
+    bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
+    # budget allows 3 repairs, but round 2 fails exactly like round 1 -> stop after one repair
+    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), bad + fenced(CODE_TEST)] + [bad] * 5
+    _, v = _run(factory, fake)
+    assert v.status == "validation_failed"
+    assert len(fake.calls) == 5  # spec, code, cases, tests, one repair
+    with factory() as s:
+        hist = s.query(ValidationRun).one().report["repair_history"]
+    assert [h["round"] for h in hist] == [1, 2]
+    assert hist[0]["signature"] == hist[1]["signature"] and "no progress" in hist[1]["stopped"]
+    assert any("subprocess" in f for f in hist[0]["failing"])
+
+
+def test_successful_repair_history_shows_progress(factory, fake, sbx):
+    bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
+    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
+    _, v = _run(factory, fake)
+    with factory() as s:
+        hist = s.query(ValidationRun).one().report["repair_history"]
+    assert [h["status"] for h in hist] == ["validation_failed", "verified"] and hist[1]["failing"] == []
