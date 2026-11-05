@@ -59,6 +59,10 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     return (max(0.0, c - h), min(1.0, c + h))
 
 
+def attempt_seed(attempt_index: int) -> int:
+    return settings.llm_seed + attempt_index
+
+
 def _cmd(args: list[str]) -> str:
     try:
         return subprocess.run(args, capture_output=True, text=True, timeout=30).stdout.strip()
@@ -82,7 +86,7 @@ def meta(models_: list[str], attempts: int) -> dict:
         "git_commit": _cmd(["git", "-C", str(ROOT), "rev-parse", "HEAD"]),
         "ollama_version": httpx.get(f"{base}/api/version", timeout=10).json().get("version"),
         "models": digests,
-        "options": OllamaProvider(base, "x").options,
+        "options": {**OllamaProvider(base, "x").options, "seed": f"{settings.llm_seed} + attempt index (0-based)"},
         "llm_timeout_s": settings.llm_timeout_s,
         "max_repair_rounds": settings.max_repair_rounds,
         "sandbox_image": settings.sandbox_image,
@@ -189,11 +193,12 @@ def main():
     m = meta(args.models, args.attempts)
     rows: list[dict] = []
     for model in args.models:
-        provider = OllamaProvider(settings.ollama_base_url, model)
         for a in range(args.attempts):  # attempt-major order: a late crash still covers every task
+            # independent sample per attempt: a fixed seed made baseline 20261105-121419 repeat identical outputs
+            provider = OllamaProvider(settings.ollama_base_url, model, seed=attempt_seed(a))
             for d, tid, prompt in TASKS:
                 r = one(factory, provider, d, tid, prompt)
-                r["attempt"] = a + 1
+                r["attempt"], r["seed"] = a + 1, provider.options["seed"]
                 rows.append(r)
                 write(stamp, m, rows, args.models)
                 print(f"{model:22} #{a + 1} {tid:16} {r['status'] or r['job_status']:18} {r['seconds_total']:7}s "

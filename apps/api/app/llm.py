@@ -20,12 +20,13 @@ class LLMProvider(Protocol):
 
 
 class OllamaProvider:
-    def __init__(self, base_url: str, model: str, timeout: float | None = None):
+    def __init__(self, base_url: str, model: str, timeout: float | None = None, seed: int | None = None):
         self.name = f"ollama:{model}"
         self._url, self._model = base_url.rstrip("/"), model
         self._timeout = timeout or settings.llm_timeout_s
-        # Fixed options: without num_predict a looping model generates until the HTTP timeout.
-        self.options = {"temperature": 0.2, "seed": settings.llm_seed,
+        # Bounded options: without num_predict a looping model generates until the HTTP timeout.
+        # A fixed seed makes repeated runs identical; pass a different seed for independent samples.
+        self.options = {"temperature": 0.2, "seed": settings.llm_seed if seed is None else seed,
                         "num_ctx": settings.llm_num_ctx, "num_predict": settings.llm_num_predict}
 
     def _chat(self, system: str, user: str, fmt: dict | None) -> str:
