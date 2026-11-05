@@ -7,6 +7,7 @@ Every stage is persisted on the GenerationJob. LLM failures abort honestly. Vali
 the package is stored as `validation_failed` so the user can inspect it. Status is decided only by
 app.skills.evaluation.full_validation, never by the model.
 """
+import hashlib
 import json
 import re
 import time
@@ -191,6 +192,16 @@ def render_files(m: Manifest, instructions: str, code: str | None, usage: str, t
     return files
 
 
+def round_summary(rnd: int, status: str, report: dict) -> dict:
+    failing = sorted(c["id"] for c in report["static"]["checks"] if c["status"] == "fail")
+    failing += sorted(f"test:{x['name']}:{x['status']}" for x in report["tests"] if x["status"] != "pass")
+    failing += sorted(f"eval:{e['name']}:{';'.join(e['reasons'])}" for e in report["evals"] if e["status"] != "pass")
+    sm = report["summary"]
+    return {"round": rnd + 1, "status": status, "tests": f"{sm['tests_passed']}/{sm['tests_total']}",
+            "evals": f"{sm['evals_passed']}/{sm['evals_total']}", "failing": failing[:20],
+            "signature": hashlib.sha256("|".join(failing).encode()).hexdigest()[:12]}
+
+
 def plan_spec(provider: LLMProvider, prompt: str, kind: str | None) -> dict:
     """analyze + schema repair. Used by the pipeline and by the plan-review endpoint."""
     hint = f'\nThe user requires kind="{kind}".' if kind else ""
@@ -274,6 +285,7 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
 
     max_rounds = settings.max_repair_rounds if m.kind == "code" else 0
     status, report, rounds, tests_rewritten = "validation_failed", {}, 0, 0
+    history: list[dict] = []  # one entry per validation round: what failed, so progress is traceable
     for rnd in range(max_rounds + 1):
         rounds = rnd
         label = f"round {rnd + 1}/{max_rounds + 1}" if m.kind == "code" else ""
@@ -296,8 +308,12 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
                 t.done("sandbox_tests", "skipped", sbx.get("error") or "static validation failed")
                 t.start("evaluate")
                 t.done("evaluate", "skipped", "sandbox did not run")
+        history.append(round_summary(rnd, status, report))
         if status == "verified" or m.kind != "code" or rnd == max_rounds:
             break
+        if len(history) >= 2 and history[-1]["signature"] == history[-2]["signature"]:
+            history[-1]["stopped"] = "no progress: identical failures in two consecutive rounds"
+            break  # another identical repair prompt would most likely return the same code
         hard = [c["id"] for c in report["static"]["checks"] if c["status"] == "fail" and c["id"].startswith(UNREPAIRABLE)]
         if hard or report["sandbox"].get("status") == "unavailable":
             break  # rewriting code cannot fix these; do not pretend
@@ -320,6 +336,7 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
     t.start("report")
     crit = ", ".join(f"{c['id']}={'pass' if c['passed'] else 'fail'}" for c in report["criteria"])
     report["repair_rounds"] = rounds
+    report["repair_history"] = history
     report["tests_rewritten_in_repair"] = tests_rewritten
     t.done("report", detail=f"status={status}; {crit}; repair rounds={rounds}")
 

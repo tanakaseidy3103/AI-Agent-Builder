@@ -115,8 +115,9 @@ def test_bad_code_is_repaired_with_real_failure_feedback(factory, fake, sbx):
 def test_repair_budget_is_bounded_and_failure_is_kept(factory, fake, sbx, monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "max_repair_rounds", 2)
-    bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
-    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), bad + fenced(CODE_TEST), bad + fenced(CODE_TEST)]
+    # a different failure each round, so the no-progress stop does not trigger and the budget is what ends the loop
+    bad = [fenced(f"import {mod}\ndef run(d):\n    return {{}}\n") for mod in ("subprocess", "socket", "ctypes")]
+    fake.responses = [SPEC_CODE, bad[0], {"cases": CASES}, fenced(CODE_TEST), bad[1] + fenced(CODE_TEST), bad[2] + fenced(CODE_TEST)]
     job, v = _run(factory, fake)
     assert job.status == "completed"
     assert v.status == "validation_failed"  # stored for inspection, never promoted
