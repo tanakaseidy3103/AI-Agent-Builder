@@ -106,3 +106,14 @@ def test_manifest_slug_and_semver():
 def test_slugify():
     assert slugify("React Performance Analyzer!") == "react-performance-analyzer"
     assert len(slugify("x")) >= 3
+
+
+def test_expectation_shaped_unlike_output_schema_is_rejected():
+    # seen in benchmark 20261105-131812: a finding object at top level while output_schema wants {findings, count}
+    cases = [{"name": "stray", "input": {"files": {}}, "expect": {"contains": {"file": "a.py", "line": 6}}},
+             {"name": "ok", "input": {"files": {}}, "expect": {"contains": {"count": 0}}}]
+    s = statuses(code_package() | {"evals/cases.json": json.dumps(cases)})
+    assert s["code.evals"] == "fail"
+    checks, _ = validate_package(code_package() | {"evals/cases.json": json.dumps(cases)})
+    msg = next(c.message for c in checks if c.id == "code.evals")
+    assert "['file', 'line']" in msg and "ok:" not in msg
