@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     storage_dir: Path = Path("data")
     sandbox_image: str = "python:3.12-slim"
     rate_limit_per_minute: int = 30
+    studio_local_only: bool = True
+    max_run_input_bytes: int = 1_000_000
 
 
 settings = Settings()
