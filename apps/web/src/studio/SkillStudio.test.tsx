@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SkillStudio } from "./SkillStudio";
 
-const STAGES = ["analyze", "specify", "plan", "generate_files", "static_validation", "test_generation", "sandbox_tests", "report", "package"];
+const STAGES = ["analyze", "specify", "plan", "generate_files", "static_validation", "test_generation", "sandbox_tests", "evaluate", "report", "package"];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 let jobPolls = 0;
@@ -24,12 +24,12 @@ function router(url: string, init?: RequestInit) {
   if (url === "/api/studio/skills/generate" && init?.method === "POST") {
     const body = JSON.parse(String(init.body));
     if (body.prompt.includes("FAIL")) return json({ detail: "Ollama unreachable" }, 500);
-    return json({ id: "j1", status: "queued", stages: [] }, 202);
+    return json({ id: "j1", status: "draft", stages: [] }, 202);
   }
   if (url === "/api/studio/jobs/j1") {
     jobPolls++;
     const done = jobPolls > 1;
-    return json({ id: "j1", status: done ? "completed" : "running", provider: "ollama:test", stage: done ? null : "analyze", error: null,
+    return json({ id: "j1", status: done ? "completed" : "generating", provider: "ollama:test", stage: done ? null : "analyze", error: null,
       skill_version_id: done ? "v1" : null,
       stages: STAGES.map((n, i) => ({ name: n, status: done ? "passed" : i === 0 ? "running" : "pending", detail: done ? `${n} ok` : "" })) });
   }
@@ -65,13 +65,14 @@ it("runs the full workflow: generate → pipeline → inspect → validate repor
   fireEvent.click(button);
 
   const stages = await screen.findByLabelText("pipeline stages");
-  expect(within(stages).getAllByRole("listitem")).toHaveLength(9);
+  expect(within(stages).getAllByRole("listitem")).toHaveLength(10);
   expect(await screen.findByText("package ok", {}, { timeout: 3000 })).toBeTruthy();
   const sent = JSON.parse(String(vi.mocked(fetch).mock.calls.find(([u]) => u === "/api/studio/skills/generate")![1]!.body));
   expect(sent.kind).toBe("code");
 
   expect(await screen.findByText("React Perf · react-perf@0.1.0")).toBeTruthy();
   expect(screen.getByText(/passed in the isolated sandbox/)).toBeTruthy();
+  expect(jobPolls).toBeGreaterThanOrEqual(2); // kept polling while 'generating'
   expect((await screen.findByLabelText("file preview")).textContent).toContain("name: react-perf");
   fireEvent.click(screen.getByText(/scripts\/main.py/));
   expect(await screen.findByText("def run(data): ...")).toBeTruthy();
@@ -101,7 +102,7 @@ it("shows an honest error when generation cannot start", async () => {
 });
 
 it("blocks export for unvalidated versions", async () => {
-  version.status = "generated";
+  version.status = "validation_failed";
   renderStudio();
   fireEvent.click(screen.getByText("Use example"));
   fireEvent.click(screen.getByRole("button", { name: "Generate Skill" }));

@@ -38,7 +38,7 @@ function useJob(id: string | null) {
     queryKey: ["job", id],
     queryFn: () => api<Job>(`/studio/jobs/${id}`),
     enabled: !!id,
-    refetchInterval: (query) => (["queued", "running"].includes(query.state.data?.status ?? "queued") ? 1000 : false),
+    refetchInterval: (query) => (["draft", "generating"].includes(query.state.data?.status ?? "draft") ? 1000 : false),
   });
   useEffect(() => {
     if (q.data?.status === "completed" || q.data?.status === "failed") qc.invalidateQueries({ queryKey: ["skills"] });
@@ -120,7 +120,7 @@ function Pipeline({ job, error }: { job?: Job; error: unknown }) {
   if (error) return <ErrorBox error={error} />;
   if (!job) return <Card title="Pipeline"><p className="text-sm text-slate-500">Loading…</p></Card>;
   return (
-    <Card title="Generation pipeline" actions={<span className="text-xs text-slate-500">{job.provider ?? "queued"} · <Badge status={job.status} /></span>}>
+    <Card title="Generation pipeline" actions={<span className="text-xs text-slate-500">{job.provider ?? "draft"} · <Badge status={job.status} /></span>}>
       <ol className="space-y-2" aria-label="pipeline stages">
         {job.stages.map((s, i) => (
           <li key={s.name} className="flex items-start gap-3 text-sm">
@@ -253,7 +253,7 @@ function Validation({ v }: { v: VersionDetail }) {
             <h3 className="mb-1 text-xs font-semibold text-slate-700">
               Sandbox tests <Badge status={r.sandbox.status === "ran" ? "passed" : "skipped"} />{" "}
               <span className="font-normal text-slate-500">
-                {r.sandbox.status === "ran" ? `${r.sandbox.duration_ms} ms · no network · 256 MB` : r.sandbox.error ?? "not run (instruction-only or static checks failed)"}
+                {r.sandbox.status === "ran" ? `${r.sandbox.duration_ms} ms · no network · ${r.sandbox.limits?.memory_mb ?? "?"} MB` : r.sandbox.error ?? "not run (instruction-only or static checks failed)"}
               </span>
             </h3>
             <ul className="space-y-1 text-xs">
@@ -275,7 +275,7 @@ function Export({ v }: { v: VersionDetail }) {
   const targets = useQuery({ queryKey: ["integrations"], queryFn: () => api<Integration[]>("/studio/integrations") });
   const [target, setTarget] = useState("claude-code");
   const [confirmReplace, setConfirmReplace] = useState(false);
-  const exportable = v.status !== "generated";
+  const exportable = v.status === "validated" || v.status === "verified";
   const info = useQuery({
     queryKey: ["install", v.id, target],
     queryFn: () => api<InstallInfo>(`/studio/versions/${v.id}/install/${target}`),

@@ -4,7 +4,7 @@ import type { StageStatus, VersionStatus } from "../api";
 const STATUS_STYLE: Record<string, string> = {
   verified: "bg-emerald-100 text-emerald-800 ring-emerald-600/20",
   validated: "bg-sky-100 text-sky-800 ring-sky-600/20",
-  generated: "bg-amber-100 text-amber-800 ring-amber-600/20",
+  validation_failed: "bg-amber-100 text-amber-800 ring-amber-600/20",
   passed: "bg-emerald-100 text-emerald-800 ring-emerald-600/20",
   pass: "bg-emerald-100 text-emerald-800 ring-emerald-600/20",
   failed: "bg-rose-100 text-rose-800 ring-rose-600/20",
@@ -18,9 +18,9 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export const STATUS_HELP: Record<VersionStatus, string> = {
-  generated: "Produced by the model; failed static validation. Not exportable.",
-  validated: "Static checks passed. Code (if any) was not proven by tests.",
-  verified: "Static checks passed and generated tests passed in the isolated sandbox.",
+  validation_failed: "At least one static check failed. Not exportable; see the validation tab for fixes.",
+  validated: "Static checks passed, but behaviour was not proven (instruction-only, or sandbox tests/eval cases failed).",
+  verified: "Static checks passed, ≥3 unit tests and every eval case (schema, determinism, expected output) passed in the isolated sandbox.",
 };
 
 export function Badge({ status }: { status: StageStatus | VersionStatus | string }) {

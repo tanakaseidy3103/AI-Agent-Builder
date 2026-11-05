@@ -4,17 +4,17 @@ export type StageStatus = "pending" | "running" | "passed" | "failed" | "skipped
 export interface Stage { name: string; status: StageStatus; detail?: string; duration_ms?: number }
 export interface Job {
   id: string; prompt: string; requested_kind: string | null;
-  status: "queued" | "running" | "completed" | "failed"; stage: string | null; stages: Stage[];
+  status: "draft" | "generating" | "completed" | "failed"; stage: string | null; stages: Stage[];
   error: string | null; provider: string | null; skill_version_id: string | null;
 }
-export type VersionStatus = "generated" | "validated" | "verified";
+export type VersionStatus = "validation_failed" | "validated" | "verified";
 export interface Check { id: string; status: "pass" | "fail" | "warn"; message: string }
 export interface TestResult { name: string; status: "pass" | "fail" | "error" | "skip"; detail: string }
 export interface Report {
   status: VersionStatus; duration_ms: number;
   static: { passed: number; failed: number; warnings: number; checks: Check[] };
   tests: TestResult[];
-  sandbox: { status: "ran" | "error" | "unavailable" | "not_run"; error?: string | null; duration_ms?: number };
+  sandbox: { status: "ran" | "error" | "unavailable" | "not_run"; error?: string | null; duration_ms?: number; limits?: { memory_mb: number; timeout_s: number } };
 }
 export interface VersionSummary { id: string; slug: string; version: string; kind: string; status: VersionStatus; file_count: number }
 export interface Manifest {
