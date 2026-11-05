@@ -18,12 +18,19 @@ MARKER = "__AAB_RESULT__"
 
 # Runs inside the container. Executes tests or run(); prints one marked JSON line.
 RUNNER = r'''
-import io, json, sys, traceback, unittest
+import io, json, os, sys, traceback, unittest
 sys.path.insert(0, "/tmp/w")
 mode = sys.argv[1]
+_write, _exit = os.write, os._exit  # bind before untrusted code can monkeypatch os
 def emit(obj):
-    sys.stdout.flush()
-    print("__AAB_RESULT__" + json.dumps(obj, default=str))
+    # Result must be the LAST stdout line: write it, then _exit to skip atexit hooks and kill threads,
+    # so untrusted code cannot print a forged marker afterwards.
+    try:
+        sys.stdout.flush()
+    except Exception:
+        pass
+    _write(1, ("\n__AAB_RESULT__" + json.dumps(obj, default=str) + "\n").encode())
+    _exit(0)
 if mode == "test":
     test_dir = sys.argv[2]
     sys.path.insert(0, "/tmp/w/scripts")
@@ -120,7 +127,8 @@ def execute(files: dict[str, str], args: list[str], *, input_data: dict | None =
     err = proc.stderr.decode("utf-8", "replace")
     if "Cannot connect to the Docker daemon" in err or "dockerDesktopLinuxEngine" in err:
         raise SandboxUnavailable("Docker daemon is not running")
-    line = next((l for l in reversed(out.splitlines()) if l.startswith(MARKER)), None)
+    lines = out.rstrip("\n").splitlines()
+    line = lines[-1] if lines and lines[-1].startswith(MARKER) else None  # only the final line counts
     if line is None:
         reason = {124: f"timeout after {timeout_s}s", 137: "killed (memory limit)"}.get(
             proc.returncode, f"no result (exit {proc.returncode})")

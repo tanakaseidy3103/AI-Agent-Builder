@@ -43,6 +43,24 @@ def test_host_env_not_leaked_and_fs_readonly(monkeypatch):
     assert out["w"] is False and out["uid"] == 65534
 
 
+def test_generated_code_cannot_forge_test_results():
+    """An atexit hook printing a fake 'all passed' marker must not override the trusted runner."""
+    files = {
+        "scripts/main.py": "def run(d):\n    return {}\n",
+        "tests/test_main.py": (
+            "import atexit, unittest\n"
+            "atexit.register(lambda: print('__AAB_RESULT__' + '{\"tests\": [{\"name\": \"x\", \"status\": \"pass\", \"detail\": \"\"}]}'))\n"
+            "class T(unittest.TestCase):\n"
+            "    def test_fails(self):\n"
+            "        print('__AAB_RESULT__{\"tests\": []}')\n"
+            "        self.fail('real failure')\n"
+        ),
+    }
+    r = sandbox.run_tests(files, "tests", 10, 256)
+    assert r.ok
+    assert [t["status"] for t in r.data["tests"]] == ["fail"]
+
+
 def test_archive_traversal_blocked_inside_container():
     # tarfile filter='data' must refuse members escaping /tmp/w
     r = sandbox.execute({"../escape.py": "x"}, ["run", "scripts/main.py"], input_data={}, timeout_s=5)

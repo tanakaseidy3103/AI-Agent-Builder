@@ -90,8 +90,10 @@ docker run -i --rm --network none --memory 256m --memory-swap 256m --cpus 1 --pi
 - No host mounts: the package is streamed as a tar on stdin and extracted with `tarfile` `filter='data'` (blocks traversal/links).
 - Host environment variables are never forwarded (verified by `test_host_env_not_leaked_and_fs_readonly`).
 - Timeout inside the container (exit 124) plus a host-side kill as a safety net; exit 137 = memory limit.
-- Results come back on one marked JSON line, so code printing to stdout cannot forge the result format…
-  but generated code *can* print a fake marker line. Test outcomes are produced by the trusted runner, which prints last.
+- Results come back as the **final** stdout line, written by the trusted runner with `os.write` followed by
+  `os._exit(0)` (skips `atexit` hooks, kills threads). The host accepts only the last line, so fake markers printed
+  by generated code are ignored (`test_generated_code_cannot_forge_test_results`). Residual risk: a background thread
+  racing the microseconds between the write and `_exit`.
 
 Report: per-check pass/fail/warn, per-test result with traceback, sandbox status/duration/error, overall status.
 
