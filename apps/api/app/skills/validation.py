@@ -222,6 +222,14 @@ def _check_evals(files: dict[str, str], manifest: Manifest, add) -> None:
             problems.append(f"{c['name']}: generated cases need expect.contains derived from the spec")
         if exp is not None and not (isinstance(exp, dict) and set(exp) <= {"equals", "contains"} and exp):
             problems.append(f"{c['name']}: expect must be {{equals|contains: ...}}")
+        elif isinstance(exp, dict):
+            # an expectation shaped unlike output_schema can never be met by correct code
+            props = set(manifest.output_schema.get("properties", {}))
+            for mode in ("equals", "contains"):
+                got = exp.get(mode)
+                stray = sorted(set(got) - props) if props and isinstance(got, dict) else []
+                if stray:
+                    problems.append(f"{c['name']}: expect.{mode} keys {stray} are not in output_schema properties {sorted(props)}")
     if len(cases) < MIN_EVAL_CASES:
         problems.append(f"{len(cases)} case(s); need ≥{MIN_EVAL_CASES}")
     add("code.evals", "fail" if problems else "pass", "; ".join(problems)[:500] or f"{len(cases)} eval cases")
