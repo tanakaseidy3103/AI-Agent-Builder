@@ -217,6 +217,9 @@ def _check_evals(files: dict[str, str], manifest: Manifest, add) -> None:
             continue
         problems += [f"{c['name']}: {e}" for e in schema_validate(manifest.input_schema, c["input"])]
         exp = c.get("expect")
+        if exp is None and manifest.origin == "generated":
+            # without an expectation a case only proves "runs", not "correct" (AI-1)
+            problems.append(f"{c['name']}: generated cases need expect.contains derived from the spec")
         if exp is not None and not (isinstance(exp, dict) and set(exp) <= {"equals", "contains"} and exp):
             problems.append(f"{c['name']}: expect must be {{equals|contains: ...}}")
     if len(cases) < MIN_EVAL_CASES:

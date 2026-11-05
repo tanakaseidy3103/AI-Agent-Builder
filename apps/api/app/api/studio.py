@@ -143,6 +143,12 @@ def validate(version_id: str, s: Session = Depends(get_session)) -> dict:
     prev = s.scalar(select(ValidationRun).where(ValidationRun.skill_version_id == v.id).order_by(ValidationRun.created_at.desc()).limit(1))
     status, report = full_validation(storage.read_package(v.storage_key), prev.model if prev else None)
     run = ValidationRun.from_report(v.id, status, report)
+    if report["sandbox"].get("status") == "unavailable" and v.kind == "code":
+        # infrastructure outage is not evidence about the Skill: record the run, keep the status
+        s.add(run)
+        audit(s, "skill.validated", v.id, status=v.status, sandbox="unavailable")
+        s.commit()
+        raise HTTPException(503, f"sandbox unavailable ({report['sandbox'].get('error')}); status unchanged: {v.status}")
     v.status = status
     s.add(run)
     audit(s, "skill.validated", v.id, status=status)

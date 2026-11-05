@@ -173,3 +173,37 @@ def test_same_name_creates_new_version_not_overwrite(factory, fake, sbx):
     _, v2 = _run(factory, fake, "commit messages three four")
     assert (v1.version, v2.version) == ("0.1.0", "0.2.0")
     assert v1.skill_id == v2.skill_id and v1.storage_key != v2.storage_key
+
+
+def test_repair_cannot_replace_failing_assertions_with_trivial_tests(factory, fake, monkeypatch):
+    monkeypatch.setattr(sandbox, "run_tests", lambda *a: sandbox.SandboxResult(
+        True, {"tests": [{"name": "t", "status": "fail", "detail": "AssertionError"}] * 3}))
+    monkeypatch.setattr(sandbox, "run_evals", _evals_from_code)
+    trivial = ("import unittest\nclass T(unittest.TestCase):\n    def test_a(self): self.assertTrue(True)\n"
+               "    def test_b(self): self.assertTrue(True)\n    def test_c(self): self.assertTrue(True)\n")
+    fake.responses = list(CODE_RESPONSES) + [fenced(CODE_SCRIPT) + fenced(trivial)] * 3
+    job, v = _run(factory, fake)
+    assert v.status != "verified"
+    assert storage.read_package(v.storage_key)["tests/test_main.py"] == CODE_TEST  # frozen
+    with factory() as s:
+        assert s.query(ValidationRun).one().report["tests_rewritten_in_repair"] == 0
+
+
+def test_generated_eval_cases_without_expect_fail_and_are_not_repaired(factory, fake, sbx):
+    no_expect = [{"name": c["name"], "input": c["input"]} for c in CASES]
+    fake.responses = [SPEC_CODE, fenced(CODE_SCRIPT), {"cases": no_expect}, fenced(CODE_TEST)]
+    job, v = _run(factory, fake)
+    assert v.status == "validation_failed"
+    assert len(fake.calls) == 4  # code.evals is unrepairable by the code-fix prompt
+    with factory() as s:
+        evals = next(c for c in s.query(ValidationRun).one().report["static"]["checks"] if c["id"] == "code.evals")
+    assert "need expect.contains" in evals["message"]
+
+
+def test_unexpected_exception_marks_job_failed(factory, fake, sbx, monkeypatch):
+    def disk_full(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(storage, "write_package", disk_full)
+    fake.responses = list(CODE_RESPONSES)
+    job, v = _run(factory, fake)
+    assert job.status == "failed" and "disk full" in job.error and v is None

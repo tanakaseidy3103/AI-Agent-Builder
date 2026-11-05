@@ -132,7 +132,7 @@ def docker_cmd(name: str, memory_mb: int, timeout_s: int, args: list[str]) -> li
         "--read-only", "--tmpfs", "/tmp:rw,size=32m",
         "--user", "65534:65534", "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
-        "-e", "PYTHONDONTWRITEBYTECODE=1",
+        "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "PYTHONHASHSEED=0",  # stable set/dict order across runs
         settings.sandbox_image, "timeout", str(timeout_s), "python", "-I", "-c", BOOTSTRAP, *args,
     ]
 

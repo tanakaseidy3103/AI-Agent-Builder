@@ -110,3 +110,19 @@ def test_nondeterministic_code_is_caught():
     status, report = full_validation(files)
     assert status != "verified"
     assert any("non-deterministic" in r for e in report["evals"] for r in e["reasons"])
+
+
+@docker
+def test_do_nothing_skill_is_not_verified():
+    """AI-1: code that returns nothing, with assertion-bearing but vacuous tests, must not reach verified."""
+    from tests.fixtures import code_package
+    files = code_package()
+    files["scripts/main.py"] = "def run(data: dict) -> dict:\n    return {'findings': [], 'count': 0}\n"
+    files["tests/test_main.py"] = ("import unittest\nfrom main import run\nclass T(unittest.TestCase):\n"
+                                  "    def test_a(self): self.assertIsInstance(run({'files': {}}), dict)\n"
+                                  "    def test_b(self): self.assertIn('count', run({'files': {}}))\n"
+                                  "    def test_c(self): self.assertEqual(run({'files': {'a': 'x'}})['count'], 0)\n")
+    status, report = full_validation(files)
+    assert status == "validated"
+    assert report["summary"]["tests_passed"] == 3  # its own tests pass...
+    assert any(e["status"] == "fail" for e in report["evals"])  # ...but the spec-derived expectation catches it

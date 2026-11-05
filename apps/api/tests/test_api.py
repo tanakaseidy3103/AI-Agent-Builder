@@ -198,3 +198,13 @@ def test_audit_log_records_operations(client, code_version, api_key):
     client.get(f"/studio/versions/{code_version}/export/claude-code")
     actions = {a["action"] for a in client.get("/studio/audit").json()}
     assert {"skill.generate.requested", "skill.generated", "skill.exported", "api_key.created"} <= actions
+
+
+def test_revalidation_during_sandbox_outage_keeps_verified(client, code_version, api_key, monkeypatch):
+    def down(*a, **k):
+        raise sandbox.SandboxUnavailable("Docker daemon is not running")
+    monkeypatch.setattr(sandbox, "run_tests", down)
+    r = client.post(f"/studio/versions/{code_version}/validate")
+    assert r.status_code == 503 and "status unchanged: verified" in r.json()["detail"]
+    assert client.get(f"/studio/versions/{code_version}").json()["status"] == "verified"
+    assert client.get("/v1/skills/react-performance-analyzer", headers={"Authorization": f"Bearer {api_key}"}).status_code == 200

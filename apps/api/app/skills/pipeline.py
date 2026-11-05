@@ -12,7 +12,6 @@ import re
 import time
 from collections.abc import Callable
 
-from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,7 +36,10 @@ STAGE_STATE = {"analyze": "planning", "specify": "planning", "plan": "planning",
                "evaluate": "testing", "report": "working", "package": "working"}
 
 # Fails that rewriting code/tests cannot fix: stop repairing instead of burning model calls.
-UNREPAIRABLE = ("structure.", "manifest.", "skill_md.")
+# code.evals: the repair prompt only rewrites main.py/tests, so bad eval cases can never be fixed by it.
+UNREPAIRABLE = ("structure.", "manifest.", "skill_md.", "code.evals")
+# Test-file failures that justify accepting rewritten tests during repair; otherwise tests stay frozen.
+BROKEN_TESTS = ("python.syntax:tests", "python.policy:tests", "code.tests")
 
 SPEC_SCHEMA = {
     "type": "object",
@@ -57,7 +59,10 @@ SPEC_SCHEMA = {
 CASES_SCHEMA = {
     "type": "object",
     "properties": {"cases": {"type": "array", "items": {
-        "type": "object", "properties": {"name": {"type": "string"}, "input": {"type": "object"}}, "required": ["name", "input"]}}},
+        "type": "object", "properties": {"name": {"type": "string"}, "input": {"type": "object"},
+                                         "expect": {"type": "object", "properties": {"contains": {"type": "object"}},
+                                                    "required": ["contains"]}},
+        "required": ["name", "input", "expect"]}}},
     "required": ["cases"],
 }
 
@@ -97,12 +102,15 @@ Rules: `import unittest`; one TestCase class; at least 3 test_ methods; every me
 inputs match input_schema; assert only behaviour the code clearly implements; stdlib only; no files, no network.
 Reply with ONLY one fenced ```python code block."""
 
-CASES_SYSTEM = """Write 3 realistic example inputs for this Skill, each matching input_schema exactly.
-Return JSON: {"cases": [{"name": "short-name", "input": {...}}, ...]}."""
+CASES_SYSTEM = """Write 3 realistic test cases for this Skill from its SPEC (no code exists yet).
+Each case: an input matching input_schema exactly, and the output a CORRECT implementation must contain.
+Use expect.contains with only facts that follow unambiguously from the input (e.g. exact counts, file names, line
+numbers); a subset of the output is enough. Include at least one case where something must be found.
+Return JSON: {"cases": [{"name": "short-name", "input": {...}, "expect": {"contains": {...}}}, ...]}."""
 
 FIX_SYSTEM = """You repair a generated Skill. You get the spec, the current module (scripts/main.py),
 the current tests (tests/test_main.py) and the exact failures from static checks and an isolated sandbox.
-Fix the module. Change a test only if it asserts behaviour the spec does not require.
+Fix the module. The tests are FROZEN unless the failures show the test file itself is broken (syntax, policy, too few tests).
 Keep all rules: Python 3.12 stdlib only, def run(data: dict) -> dict, ≥3 tests each with an assertion.
 Reply with exactly TWO fenced ```python blocks: first the full scripts/main.py, then the full tests/test_main.py."""
 
@@ -202,7 +210,7 @@ def run_generation(job_id: str, session_factory: Callable[[], Session], provider
         t = Tracker(s, job)
         try:
             _pipeline(s, job, t, provider)
-        except (LLMError, ValidationError, ValueError) as e:
+        except Exception as e:  # any failure must end the job as failed, never leave it 'generating'
             s.rollback()
             job = s.get(GenerationJob, job_id)
             failed = job.stage or "analyze"
@@ -262,7 +270,7 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
         t.done("test_generation", "skipped", "instruction-only Skill")
 
     max_rounds = settings.max_repair_rounds if m.kind == "code" else 0
-    status, report, rounds = "validation_failed", {}, 0
+    status, report, rounds, tests_rewritten = "validation_failed", {}, 0, 0
     for rnd in range(max_rounds + 1):
         rounds = rnd
         label = f"round {rnd + 1}/{max_rounds + 1}" if m.kind == "code" else ""
@@ -295,7 +303,9 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
                                                f"tests/test_main.py:\n```python\n{tests}```\n\nFailures:\n{failures_text(report)}"))
         if fix:
             code = fix[0]
-            tests = fix[1] if len(fix) > 1 else tests
+            broken = any(c["status"] == "fail" and c["id"].startswith(BROKEN_TESTS) for c in report["static"]["checks"])
+            if len(fix) > 1 and broken:  # passing-but-failing assertions can't be rewritten away
+                tests, tests_rewritten = fix[1], tests_rewritten + 1
         files = render_files(m, instructions, code, "", tests, cases)
         t.done("generate_files", detail=f"repair {rnd + 1}: {'updated' if fix else 'model returned no code'}")
     if m.kind != "code":
@@ -307,6 +317,7 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
     t.start("report")
     crit = ", ".join(f"{c['id']}={'pass' if c['passed'] else 'fail'}" for c in report["criteria"])
     report["repair_rounds"] = rounds
+    report["tests_rewritten_in_repair"] = tests_rewritten
     t.done("report", detail=f"status={status}; {crit}; repair rounds={rounds}")
 
     t.start("package")

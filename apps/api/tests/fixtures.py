@@ -37,7 +37,7 @@ class TestAnalyzer(unittest.TestCase):
 '''
 
 CASES = [
-    {"name": "inline", "input": {"files": {"App.tsx": "<b onClick={() => go()} />"}}},
+    {"name": "inline", "input": {"files": {"App.tsx": "<b onClick={() => go()} />"}}, "expect": {"contains": {"count": 1}}},
     {"name": "clean", "input": {"files": {"A.tsx": "const a = 1"}}, "expect": {"equals": {"findings": [], "count": 0}}},
 ]
 
