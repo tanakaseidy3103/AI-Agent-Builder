@@ -1,6 +1,6 @@
 """Objective validation + evaluation of a package. Decides the version status.
 
-Status definitions (docs/SKILL_STATUS.md mirrors this):
+Status definitions (docs/skills.md §2 mirrors this):
   validation_failed  at least one static check failed (malformed, unsafe or incomplete package)
   validated          every static check passed; behaviour NOT proven by execution
                      (always the ceiling for instruction-only Skills)

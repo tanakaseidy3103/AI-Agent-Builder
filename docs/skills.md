@@ -47,30 +47,35 @@ extension allowlist; ≤50 files, ≤100 KB per file, ≤1 MB total.
 
 | # | Stage | What happens | LLM? |
 |---|---|---|---|
-| 1 | analyze | model returns a spec (JSON Schema-constrained via Ollama structured output) | yes |
-| 2 | specify | build `Manifest`; one repair call if I/O schemas are invalid; new version if slug exists (never overwrite) | repair only |
+| 1 | analyze | model returns a spec (structured output); skipped when the user approved a plan | yes |
+| 2 | specify | build `Manifest`; one spec repair if I/O schemas are invalid; new version if slug exists (never overwrite) | repair only |
 | 3 | plan | deterministic file list from `kind` | no |
-| 4 | generate_files | code Skills: model writes `scripts/main.py`; one repair call with the failing checks | yes |
-| 5 | static_validation | all static checks except tests | no |
-| 6 | test_generation | model writes unittest tests from the code; one repair call | yes |
-| 7 | sandbox_tests | static checks again + tests in Docker sandbox | no |
-| 8 | report | `ValidationRun` with every check and test | no |
-| 9 | package | files to `STORAGE_DIR/skills/<version_id>/`, `SkillVersion` row | no |
+| 4 | generate_files | model writes `scripts/main.py` (fenced code block); model writes eval cases **from the spec only**, constrained by the Skill's real `input_schema`, each with `expect.contains` | yes |
+| 5 | static_validation | every static check | no |
+| 6 | test_generation | model writes `tests/test_main.py` | yes |
+| 7 | sandbox_tests | unit tests in the Docker sandbox | no |
+| 8 | evaluate | eval cases in the sandbox, judged on the host | no |
+| — | repair loop | up to `MAX_REPAIR_ROUNDS` (3) rounds; the model gets static failures, test tracebacks and, for each failed eval, its input, expected and actual output. **Tests are frozen** unless the test file itself is broken. Stops early on failures code cannot fix (`structure.`, `manifest.`, `skill_md.`, `code.evals`) | yes |
+| 9 | report | `ValidationRun` with every check, test, eval, criterion, model, repair rounds | no |
+| 10 | package | files to `STORAGE_DIR/skills/<version_id>/`, `SkillVersion` row | no |
 
-LLM errors (unreachable, invalid JSON, Ollama 500) fail the job with the real message. Validation failures do **not**
-abort: the package is stored as `generated` so the user can see what failed.
+Every Ollama call is bounded (`num_predict`, `num_ctx`, timeout); truncated output (`done_reason=length`) and timeouts
+fail with an explicit message. Any exception ends the job as `failed`, never stuck in `generating`. Validation failures do
+**not** abort: the package is stored as `validation_failed` so the user can see what failed.
 
 The user may force `kind` (`auto | instructions | code`).
 
-### Statuses
+### Statuses (decided only by `app/skills/evaluation.py::full_validation`)
 
-| Status | Meaning | Exportable | Runnable via /v1 |
+| Status | Objective criteria | Exportable | Runnable via /v1 |
 |---|---|---|---|
-| `generated` | produced by the model, static validation failed | no | no |
-| `validated` | all static checks pass | yes | instruction Skills only |
-| `verified` | validated **and** ≥1 generated test, all passing in the sandbox | yes | yes |
+| `validation_failed` | at least one static check failed | no | no |
+| `validated` | every static check passed; behaviour **not** proven (instruction-only, or tests/evals failed, or sandbox unavailable) | yes | instruction Skills only |
+| `verified` | code Skill, validated, **and** in the sandbox: ≥3 unit tests, each with an assertion, all passing; ≥2 eval cases, each raising no error, matching `output_schema`, identical on two runs (`PYTHONHASHSEED=0`), and meeting its `expect` (required for generated Skills) | yes | yes |
 
-An instruction-only Skill can never be `verified` — nothing executable exists to test.
+Job statuses: `draft` → `generating` → `completed` | `failed`.
+An instruction-only Skill can never be `verified`: nothing executable exists to test. Re-validating while the sandbox
+is unavailable keeps the stored status (HTTP 503).
 
 ## 3. Validation (Implemented) — `app/skills/validation.py`, `app/skills/sandbox.py`
 
