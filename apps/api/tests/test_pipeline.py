@@ -215,3 +215,16 @@ def test_eval_case_schema_embeds_the_skill_input_schema(factory, fake, sbx):
     cases = fake.schemas[1]["properties"]["cases"]  # schemas[0] is the spec
     assert cases["items"]["properties"]["input"] == SPEC_CODE["input_schema"]
     assert cases["minItems"] == 2 and "expect" in cases["items"]["required"]
+
+
+def test_failed_eval_feedback_shows_input_expected_and_actual(factory, fake, sbx, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "max_repair_rounds", 1)
+    wrong = [{**CASES[0], "expect": {"contains": {"count": 5}}}, CASES[1]]
+    fake.responses = [SPEC_CODE, fenced(CODE_SCRIPT), {"cases": wrong}, fenced(CODE_TEST), fenced(CODE_SCRIPT)]
+    _, v = _run(factory, fake)
+    assert v.status == "validated"  # a wrong expectation is never "repaired" into verified
+    fix_prompt = fake.calls[4][1]
+    assert "eval inline: output does not contain expect.contains" in fix_prompt
+    assert '"App.tsx"' in fix_prompt and 'expected: {"contains": {"count": 5}}' in fix_prompt
+    assert 'actual: {"findings": [{"file": "App.tsx"' in fix_prompt and '"count": 1' in fix_prompt
