@@ -8,6 +8,7 @@ docs/benchmarks/<stamp>.json after every run (a crash keeps finished rows) and s
 These are GENERATED Skills; the human-written reference Skills are evaluated separately.
 """
 import argparse
+import hashlib
 import json
 import math
 import platform
@@ -29,6 +30,7 @@ from app import models  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.db import Base  # noqa: E402
 from app.llm import OllamaProvider  # noqa: E402
+from app.skills import storage  # noqa: E402
 from app.skills.pipeline import run_generation  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -141,7 +143,27 @@ def one(factory, provider, difficulty, task_id, prompt) -> dict:
             "evals": f"{run.evals_passed}/{run.evals_total}" if run else None,
             "eval_failures": [e["reasons"] for e in run.report.get("evals", []) if e["status"] != "pass"][:3] if run else None,
             "criteria": run.report["criteria"] if run else None,
+            "code_sha": _code_sha(v),
         }
+
+
+def _code_sha(v) -> str | None:
+    if v is None:
+        return None
+    files = storage.read_package(v.storage_key)
+    src = files.get("scripts/main.py", "") + "\0" + files.get("tests/test_main.py", "")
+    return hashlib.sha256(src.encode()).hexdigest()[:16]
+
+
+def independent(rows: list[dict]) -> list[dict]:
+    """One row per distinct (model, task, generated code). Identical outputs are one observation, not several."""
+    seen, out = set(), []
+    for r in rows:
+        key = (r["model"], r["task"], r.get("code_sha") or f"no-package:{r.get('error') or r.get('first_failure')}")
+        if key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
 
 
 def write(stamp: str, m: dict, rows: list[dict], models_: list[str]) -> None:
@@ -151,18 +173,21 @@ def write(stamp: str, m: dict, rows: list[dict], models_: list[str]) -> None:
          f"{m['attempts_per_task']} attempts × {len(TASKS)} tasks per model · options `{json.dumps(m['options'])}` · "
          f"max repair rounds {m['max_repair_rounds']} · GPU {m['gpu']}", "",
          "Generated Skills only. Reference (human-written) Skills are not part of these numbers.", "",
-         "| Model | Runs | verified | validated | validation_failed | job failed | verified rate (95% Wilson CI) | median s |",
-         "|---|---|---|---|---|---|---|---|"]
+         "Rates use independent samples only: runs that produced byte-identical code+tests for the same task count once.", "",
+         "| Model | Runs | Independent samples | verified | validated | validation_failed | job failed | verified rate (95% Wilson CI, independent n) | median s |",
+         "|---|---|---|---|---|---|---|---|---|"]
     for model in models_:
         rs = [r for r in rows if r["model"] == f"ollama:{model}"]
         if not rs:
             continue
-        k = sum(r["status"] == "verified" for r in rs)
-        lo, hi = wilson(k, len(rs))
+        ind = independent(rs)
+        k = sum(r["status"] == "verified" for r in ind)
+        lo, hi = wilson(k, len(ind))
         secs = sorted(r["seconds_total"] for r in rs)
         cnt = lambda st: sum(r["status"] == st for r in rs)  # noqa: E731
-        L.append(f"| {model} | {len(rs)} | {k} | {cnt('validated')} | {cnt('validation_failed')} | "
-                 f"{sum(r['job_status'] == 'failed' for r in rs)} | {k}/{len(rs)} ({lo:.2f}–{hi:.2f}) | {secs[len(secs) // 2]} |")
+        L.append(f"| {model} | {len(rs)} | {len(ind)} | {sum(r['status'] == 'verified' for r in rs)} | {cnt('validated')} | "
+                 f"{cnt('validation_failed')} | {sum(r['job_status'] == 'failed' for r in rs)} | "
+                 f"{k}/{len(ind)} ({lo:.2f}–{hi:.2f}) | {secs[len(secs) // 2]} |")
     L += ["", "## By task", "", "| Model | Difficulty | Task | verified / runs |", "|---|---|---|---|"]
     for model in models_:
         for d, tid, _ in TASKS:
