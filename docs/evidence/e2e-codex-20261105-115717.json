@@ -17,25 +17,25 @@
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw '~\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw '~\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw '~\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -Command \"Get-Content -Raw '~\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
       }
     },
     {
@@ -65,25 +65,25 @@
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw '~\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw '~\\\\AppData\\\\Local\\\\Temp\\\\aab-e2e-codex-92hjri4v\\\\.codex\\\\skills\\\\python-code-analyzer\\\\SKILL.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-ChildItem -Force 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp' | Select-Object -ExpandProperty Name\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-ChildItem -Force '~\\\\AppData\\\\Local\\\\Temp' | Select-Object -ExpandProperty Name\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-ChildItem -Force 'C:\\\\Users\\\\eduardo\\\\AppData\\\\Local\\\\Temp' | Select-Object -ExpandProperty Name\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-ChildItem -Force '~\\\\AppData\\\\Local\\\\Temp' | Select-Object -ExpandProperty Name\""
       }
     },
     {
@@ -113,25 +113,25 @@
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\skills\\\\computer-use\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw '~\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\skills\\\\computer-use\\\\SKILL.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\skills\\\\computer-use\\\\SKILL.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw '~\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\skills\\\\computer-use\\\\SKILL.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\guidance.md'; Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\confirmations.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw '~\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\guidance.md'; Get-Content -Raw '~\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\confirmations.md'\""
       }
     },
     {
       "name": "shell",
       "input": {
-        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\guidance.md'; Get-Content -Raw 'C:\\\\Users\\\\eduardo\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\confirmations.md'\""
+        "command": "\"C:\\\\Program Files\\\\PowerShell\\\\7\\\\pwsh.exe\" -NoProfile -Command \"Get-Content -Raw '~\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\guidance.md'; Get-Content -Raw '~\\\\.codex\\\\plugins\\\\cache\\\\openai-bundled\\\\computer-use\\\\26.1016.62342\\\\docs\\\\confirmations.md'\""
       }
     }
   ]

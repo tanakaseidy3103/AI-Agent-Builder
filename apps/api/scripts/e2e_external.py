@@ -45,7 +45,8 @@ PROMPT = ("Review the Python code in the app/ folder for defects. A project skil
 def redact_home(text: str) -> str:
     """Evidence is committed: replace the local home path (contains the user name) with ~."""
     home = str(Path.home())
-    for variant in (home, home.replace("\\", "\\\\"), home.replace("\\", "/")):
+    # longest escaping first: nested JSON (codex) double-escapes backslashes
+    for variant in (home.replace("\\", "\\" * 8), home.replace("\\", "\\" * 4), home.replace("\\", "\\\\"), home, home.replace("\\", "/")):
         text = text.replace(variant, "~")
     return text
 
