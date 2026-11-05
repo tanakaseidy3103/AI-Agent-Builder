@@ -27,7 +27,7 @@ their areas are covered below only by my own checks.
 
 | Capability | Gap |
 |---|---|
-| **Generating code Skills with a real LLM** | **0 / 29 benchmark runs reached `verified`** (see §3). The product promise "prompt → verified Skill" is not demonstrated with generated code. |
+| **Generating code Skills with a real LLM** | **0 / 30 benchmark runs reached `verified`** (see §3). The product promise "prompt → verified Skill" is not demonstrated with generated code. |
 | Plan-review endpoint (`POST /studio/skills/plan`) | no UI, no HTTP test |
 | Evaluations endpoint (`/studio/evaluations`), agents/events endpoints, WebSocket | no UI, no HTTP/WS test |
 | Studio UI | Vitest with mocked fetch only. No browser E2E. Eval cases and criteria are not rendered. |
@@ -36,7 +36,7 @@ their areas are covered below only by my own checks.
 | Docker Compose API container | sandbox reports "unavailable" by design; `POST /studio/reference/seed` crashes there (repo path not in image, AR-4) |
 | CI workflow | written, never run (no push) |
 
-## 3. Generation benchmark: real results (29 of 30 runs; run 30 was still executing at audit time)
+## 3. Generation benchmark: real results (30 of 30 runs)
 
 Conditions: `docs/benchmarks/20261105-121419.json` meta: commit `43e661e`, Ollama 0.40.14, options
 `temperature 0.2, seed 42, num_ctx 8192, num_predict 3072`, max 3 repair rounds, sandbox image `sha256:b18b261e…`,
@@ -46,7 +46,7 @@ hard: react-a11y, laravel-bugs). Model digests: llama3.2:3b `a80c4f17acd5`, qwen
 | Model | Runs | verified | validated | validation_failed | median s | dominant failure |
 |---|---|---|---|---|---|---|
 | llama3.2:3b | 15 | 0 | 0 | 15 | 25 | eval cases violate the input schema (10), Python syntax errors (4) |
-| qwen2.5-coder:latest | 14 | 0 | 11 | 3 | 147 | code passes static checks but **detects nothing**; own tests and spec-derived expectations fail |
+| qwen2.5-coder:latest | 15 | 0 | 12 | 3 | 147 | code passes static checks but **detects nothing**; own tests and spec-derived expectations fail |
 
 What the data shows (inspected in the run database):
 - **qwen2.5-coder:** generation works and validation catches the real defect. Example: `run()` returns `{"issues": []}`
