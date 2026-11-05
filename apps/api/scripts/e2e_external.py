@@ -42,6 +42,9 @@ PROMPT = ("Review the Python code in the app/ folder for defects. A project skil
           "List every finding as `file:line rule`. Do not modify any file.")
 
 
+SEP = r"[\\/]+"  # path separator, possibly escaped several times inside nested JSON
+
+
 def redact_home(text: str) -> str:
     """Evidence is committed: replace the local home path (contains the user name) with ~."""
     home = str(Path.home())
@@ -66,7 +69,8 @@ def version_id() -> str:
 
 def install(target: str, proj: Path, vid: str) -> Path:
     z = zipfile.ZipFile(io.BytesIO(get(f"/studio/versions/{vid}/export/{target}")))
-    dest = proj / (".claude/skills" if target == "claude-code" else ".codex/skills")
+    # project-scope install dirs from each tool's docs: Claude Code .claude/skills, Codex .agents/skills
+    dest = proj / (".claude/skills" if target == "claude-code" else ".agents/skills")
     dest.mkdir(parents=True)
     z.extractall(dest)  # our own ZIP; names were validated by safe_relpath at export
     return dest / SKILL
@@ -110,8 +114,9 @@ def analyze(target: str, events: list[dict]) -> dict:
     if target == "claude-code":
         loaded = any(t["name"] == "Skill" and SKILL in json.dumps(t["input"]) for t in tool_calls)
     else:
-        loaded = f"{SKILL}/SKILL.md" in blob.replace("\\\\", "/").replace("\\", "/")
-    script_ran = "scripts/cli.py" in blob.replace("\\\\", "/").replace("\\", "/")
+        # Codex has no Skill tool: it loads a Skill by reading its SKILL.md from the installed dir
+        loaded = bool(re.search(SKILL + SEP + r"SKILL\.md", blob))
+    script_ran = bool(re.search(r"scripts" + SEP + r"cli\.py", blob))
     found = {r: bool(re.search(re.escape(r), final)) for r in EXPECTED}
     return {"skill_loaded": loaded, "script_ran": script_ran, "findings_reported": found,
             "passed": loaded and script_ran and all(found.values()), "final_answer": final[-3000:],
@@ -121,10 +126,13 @@ def analyze(target: str, events: list[dict]) -> dict:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=["claude-code", "codex"], required=True)
+    # Codex's Windows sandbox runs commands as a separate user that cannot open dirs under the caller's %TEMP%
+    # (CreateProcessWithLogonW error 267); pass a root that user can read, e.g. C:\Users\Public.
+    ap.add_argument("--root", default=None, help="parent dir for the throwaway project (default: system temp)")
     args = ap.parse_args()
     if not shutil.which("claude" if args.target == "claude-code" else "codex"):
         raise SystemExit(f"{args.target} CLI not installed")
-    proj = Path(tempfile.mkdtemp(prefix=f"aab-e2e-{args.target}-"))
+    proj = Path(tempfile.mkdtemp(prefix=f"aab-e2e-{args.target}-", dir=args.root))
     for rel, text in SAMPLE.items():
         (proj / rel).parent.mkdir(parents=True, exist_ok=True)
         (proj / rel).write_text(text, encoding="utf-8")
@@ -136,7 +144,7 @@ def main():
     out = EVIDENCE / f"e2e-{args.target}-{stamp}.json"
     text = json.dumps({"target": args.target, "skill": SKILL, "installed_at": str(installed.relative_to(proj)),
                        "exit_code": code, "stderr_tail": stderr, **res}, indent=2, ensure_ascii=False)
-    out.write_text(redact_home(text), encoding="utf-8")
+    out.write_text(redact_home(text).replace(str(proj), "<project>"), encoding="utf-8")
     print(json.dumps({k: res[k] for k in ("skill_loaded", "script_ran", "findings_reported", "passed")}, indent=2))
     print("exit", code, "| evidence:", out)
     sys.exit(0 if res["passed"] else 1)

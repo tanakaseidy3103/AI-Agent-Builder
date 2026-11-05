@@ -71,7 +71,7 @@ def test_revalidate_records_new_run(client, code_version):
 @pytest.mark.parametrize("target,expected", [
     ("claude-code", "react-performance-analyzer/SKILL.md"),
     ("codex", "react-performance-analyzer/SKILL.md"),
-    ("cursor", ".cursor/rules/react-performance-analyzer.mdc"),
+    ("cursor", "react-performance-analyzer/SKILL.md"),
     ("canonical", "react-performance-analyzer/manifest.json"),
 ])
 def test_export_zip_layouts(client, code_version, target, expected):
@@ -81,11 +81,14 @@ def test_export_zip_layouts(client, code_version, target, expected):
     names = z.namelist()
     assert expected in names
     assert all(not n.startswith("/") and ".." not in n.split("/") for n in names)
-    if target != "cursor":
-        fm = parse_frontmatter(z.read(f"react-performance-analyzer/SKILL.md").decode())
-        assert fm["name"] == "react-performance-analyzer" and fm["description"]
-    else:
-        assert ".cursor/skills/react-performance-analyzer/SKILL.md" in names  # canonical preserved
+    fm = parse_frontmatter(z.read("react-performance-analyzer/SKILL.md").decode())
+    assert fm["name"] == "react-performance-analyzer" and fm["description"]
+
+
+@pytest.mark.parametrize("target,root", [("claude-code", "$HOME/.claude/skills"), ("codex", "$HOME/.agents/skills"),
+                                         ("cursor", ".cursor/skills")])
+def test_install_roots_follow_official_docs(client, code_version, target, root):
+    assert f'DEST="{root}"' in client.get(f"/studio/versions/{code_version}/install/{target}").json()["install"]["bash"]
 
 
 def test_export_installs_into_fake_home_and_runs_cli(client, code_version, tmp_path):

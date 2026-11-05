@@ -8,7 +8,7 @@ import io
 import zipfile
 from dataclasses import asdict, dataclass
 
-from app.skills.package import Manifest, instructions_body, safe_relpath
+from app.skills.package import Manifest, safe_relpath
 
 
 @dataclass(frozen=True)
@@ -26,14 +26,16 @@ TARGETS: dict[str, Target] = {
         "claude-code", "Claude Code", "user", "$HOME/.claude/skills", "$HOME\\.claude\\skills",
         "Claude Code discovers Skills in ~/.claude/skills/<name>/SKILL.md (or <project>/.claude/skills/). "
         "Start a new session after installing."),
+    # Paths from the official docs fetched 2026-11-05: https://learn.chatgpt.com/docs/build-skills
     "codex": Target(
-        "codex", "OpenAI Codex", "user", "$HOME/.codex/skills", "$HOME\\.codex\\skills",
-        "Codex reads Skills with the same SKILL.md frontmatter (name, description). Restart Codex after installing. "
-        "Verify the path against your Codex version's docs."),
+        "codex", "OpenAI Codex", "user", "$HOME/.agents/skills", "$HOME\\.agents\\skills",
+        "Codex discovers Skills in ~/.agents/skills/<name>/SKILL.md (user) or <repo>/.agents/skills/ (project). "
+        "Restart Codex after installing."),
+    # https://cursor.com/docs/skills: native Agent Skills. Not end-to-end tested here (Cursor not installed).
     "cursor": Target(
-        "cursor", "Cursor (project rule)", "project", ".", ".",
-        "Cursor has no identical Skill format: this export adds a project rule .cursor/rules/<name>.mdc that points "
-        "to the canonical package under .cursor/skills/<name>/. Extract at the project root."),
+        "cursor", "Cursor", "project", ".cursor/skills", ".cursor\\skills",
+        "Cursor loads native Agent Skills from <project>/.cursor/skills/<name>/SKILL.md. Run the command at the "
+        "project root. Not verified end-to-end by AI Agent Builder."),
     "canonical": Target(
         "canonical", "Canonical package", "user", ".", ".", "Original package, unchanged."),
 }
@@ -42,16 +44,9 @@ TARGETS: dict[str, Target] = {
 def layout(target: str, m: Manifest, files: dict[str, str]) -> dict[str, str]:
     """Return {zip_path: text}. Canonical files are always included unchanged."""
     slug = m.id
-    if target in ("claude-code", "codex", "canonical"):
-        return {f"{slug}/{p}": t for p, t in files.items()}
-    if target == "cursor":
-        out = {f".cursor/skills/{slug}/{p}": t for p, t in files.items()}
-        rule = (f"---\ndescription: {m.description.replace(chr(10), ' ')}\nalwaysApply: false\n---\n\n"
-                f"{instructions_body(files['SKILL.md'])}\n\n"
-                f"Skill files live in `.cursor/skills/{slug}/` (run scripts from that directory).\n")
-        out[f".cursor/rules/{slug}.mdc"] = rule
-        return out
-    raise KeyError(target)
+    if target not in TARGETS:
+        raise KeyError(target)
+    return {f"{slug}/{p}": t for p, t in files.items()}  # every target uses the Agent Skills folder layout
 
 
 def build_zip(target: str, m: Manifest, files: dict[str, str]) -> bytes:
@@ -74,18 +69,16 @@ def zip_name(target: str, m: Manifest) -> str:
 def install_instructions(target: str, m: Manifest) -> dict:
     tg = TARGETS[target]
     z = zip_name(target, m)
-    check = f".cursor/skills/{m.id}" if target == "cursor" else m.id
+    check = m.id
     bash = (f'DEST="{tg.install_root}"; if [ -e "$DEST/{check}" ]; then '
             f'echo "{m.id} already exists in $DEST — use the replace command"; '
             f'else mkdir -p "$DEST" && unzip -q "{z}" -d "$DEST" && echo "installed {m.id}@{m.version}"; fi')
     ps = (f'$d = "{tg.install_root_ps}"; if (Test-Path "$d\\{check}") {{ "{m.id} already exists in $d — use the replace command" }} '
           f'else {{ New-Item -ItemType Directory -Force $d | Out-Null; Expand-Archive "{z}" -DestinationPath $d; "installed {m.id}@{m.version}" }}')
     backup = f"{check}.bak-$(date +%Y%m%d%H%M%S)"
-    # cursor: the .mdc rule outside the backed-up dir must be overwritten, hence -o / -Force
-    force_sh, force_ps = (" -o", " -Force") if target == "cursor" else ("", "")
-    replace_bash = f'DEST="{tg.install_root}"; mv "$DEST/{check}" "$DEST/{backup}" && unzip{force_sh} -q "{z}" -d "$DEST"'
-    replace_ps = (f'$d = "{tg.install_root_ps}"; Rename-Item "$d\\{check}" "{check.rsplit("/", 1)[-1]}.bak-$(Get-Date -Format yyyyMMddHHmmss)"; '
-                  f'Expand-Archive "{z}" -DestinationPath $d{force_ps}')
+    replace_bash = f'DEST="{tg.install_root}"; mv "$DEST/{check}" "$DEST/{backup}" && unzip -q "{z}" -d "$DEST"'
+    replace_ps = (f'$d = "{tg.install_root_ps}"; Rename-Item "$d\\{check}" "{check}.bak-$(Get-Date -Format yyyyMMddHHmmss)"; '
+                  f'Expand-Archive "{z}" -DestinationPath $d')
     return {
         "target": asdict(tg), "zip": z, "skill": m.id, "version": m.version,
         "install": {"bash": bash, "powershell": ps},

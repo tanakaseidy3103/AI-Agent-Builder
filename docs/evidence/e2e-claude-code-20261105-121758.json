@@ -1,0 +1,31 @@
+{
+  "target": "claude-code",
+  "skill": "python-code-analyzer",
+  "installed_at": ".claude\\skills\\python-code-analyzer",
+  "exit_code": 0,
+  "stderr_tail": "",
+  "skill_loaded": true,
+  "script_ran": true,
+  "findings_reported": {
+    "mutable-default": true,
+    "bare-except": true,
+    "unused-import": true
+  },
+  "passed": true,
+  "final_answer": "All 4 findings are in `app/billing.py`, ordered most severe first:\n\n| Location | Rule | Fix |\n|---|---|---|\n| `billing.py:8` | `bare-except` | Replace `except:` with `except Exception:` (or the specific exception type). A bare `except` swallows `KeyboardInterrupt` and `SystemExit`, making the process impossible to kill cleanly. |\n| `billing.py:5` | `mutable-default` | Change the mutable default arg (e.g. `def charge(items=[])`) to `def charge(items=None)` and add `if items is None: items = []` at the top. The default object is shared across all calls, so mutations persist between invocations — a classic Python footgun with money data. |\n| `billing.py:5` | `missing-docstring` | Add a docstring to `charge` describing what it does, its args, and return value. |\n| `billing.py:1` | `unused-import` | Delete `import json`. |\n\nThe `bare-except` and `mutable-default` on `charge` are the ones to fix first — both can silently corrupt behaviour in a billing path.\n\n---\n*Skipped: did not check runtime behaviour, type correctness, or business logic — static AST only.*",
+  "tool_calls": [
+    {
+      "name": "Skill",
+      "input": {
+        "skill": "python-code-analyzer"
+      }
+    },
+    {
+      "name": "Bash",
+      "input": {
+        "command": "python \"~\\AppData\\Local\\Temp\\aab-e2e-claude-code-thdjoi93\\.claude\\skills\\python-code-analyzer\\scripts\\cli.py\" --dir \"~\\AppData\\Local\\Temp\\aab-e2e-claude-code-thdjoi93\\app\"",
+        "description": "Run Python code analyzer on app/ folder"
+      }
+    }
+  ]
+}
