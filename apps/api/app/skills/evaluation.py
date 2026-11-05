@@ -10,6 +10,7 @@ Status definitions (docs/SKILL_STATUS.md mirrors this):
                          output_schema, returned identical output on two runs, and met its `expect` (if any)
 The model never sets the status; only these checks do.
 """
+import json
 import time
 
 from app.skills import sandbox
@@ -90,12 +91,22 @@ def full_validation(files: dict[str, str], model: str | None = None) -> tuple[st
     return status, report
 
 
+def _clip(value: object, limit: int = 600) -> str:
+    text = json.dumps(value, ensure_ascii=False, default=str)
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
 def failures_text(report: dict) -> str:
     """Human/LLM-readable list of what failed, used by the repair loop and the UI."""
     lines = [f"- {c['id']}: {c['message']}" for c in report["static"]["checks"] if c["status"] == "fail"]
     lines += [f"- test {t['name']} {t['status']}:\n{t['detail'][-800:]}" for t in report["tests"] if t["status"] != "pass"]
-    lines += [f"- eval {e['name']}: {'; '.join(e['reasons'])}" + (f"\n{e['trace'][-600:]}" if e.get("trace") else "")
-              for e in report["evals"] if e["status"] != "pass"]
+    for e in report["evals"]:
+        if e["status"] == "pass":
+            continue
+        # concrete evidence: the model can only fix behaviour it can see (input → expected vs actual)
+        lines.append(f"- eval {e['name']}: {'; '.join(e['reasons'])}\n"
+                     f"  input: {_clip(e.get('input'))}\n  expected: {_clip(e.get('expected'))}\n"
+                     f"  actual: {_clip(e.get('actual'))}" + (f"\n{e['trace'][-600:]}" if e.get("trace") else ""))
     if report["sandbox"].get("status") == "error":
         lines.append(f"- sandbox error: {report['sandbox'].get('error')}")
     return "\n".join(lines)
