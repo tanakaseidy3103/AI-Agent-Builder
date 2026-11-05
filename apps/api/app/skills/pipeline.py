@@ -22,7 +22,7 @@ from app.skills import storage
 from app.skills.evaluation import failures_text, full_validation
 from app.skills.package import Manifest, manifest_json, render_skill_md, slugify
 from app.skills.templates import CLI, how_to_run
-from app.skills.validation import _schema_ok
+from app.skills.validation import MIN_EVAL_CASES, _schema_ok
 
 STAGES = ["analyze", "specify", "plan", "generate_files", "static_validation",
           "test_generation", "sandbox_tests", "evaluate", "report", "package"]
@@ -56,15 +56,18 @@ SPEC_SCHEMA = {
     },
     "required": ["name", "description", "kind", "instructions", "input_schema", "output_schema"],
 }
-CASES_SCHEMA = {
-    "type": "object",
-    "properties": {"cases": {"type": "array", "items": {
-        "type": "object", "properties": {"name": {"type": "string"}, "input": {"type": "object"},
-                                         "expect": {"type": "object", "properties": {"contains": {"type": "object"}},
-                                                    "required": ["contains"]}},
-        "required": ["name", "input", "expect"]}}},
-    "required": ["cases"],
-}
+def cases_schema(input_schema: dict) -> dict:
+    """Structured-output schema for eval cases. Embeds the Skill's real input_schema so constrained decoding
+    cannot emit inputs of the wrong shape (benchmark 20261105-121419: 10/15 llama failures were e.g. files as a list)."""
+    return {
+        "type": "object",
+        "properties": {"cases": {"type": "array", "minItems": MIN_EVAL_CASES, "items": {
+            "type": "object", "properties": {"name": {"type": "string"}, "input": input_schema,
+                                             "expect": {"type": "object", "properties": {"contains": {"type": "object"}},
+                                                        "required": ["contains"]}},
+            "required": ["name", "input", "expect"]}}},
+        "required": ["cases"],
+    }
 
 SPEC_SYSTEM = """You design AI Skills: reusable capabilities for AI coding agents (Claude Code, Codex, Cursor).
 Return JSON only. Fields:
@@ -253,7 +256,7 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
         blocks = extract_blocks(provider.complete(CODE_SYSTEM, ctx))
         code = blocks[0] if blocks else ""
         try:
-            cases = provider.complete_json(CASES_SYSTEM, ctx, CASES_SCHEMA).get("cases", [])
+            cases = provider.complete_json(CASES_SYSTEM, ctx, cases_schema(m.input_schema)).get("cases", [])
         except LLMError as e:
             cases = []  # validation will report missing eval cases; keep the honest failure visible
             t._set("generate_files", detail=f"eval cases not generated: {e}")
