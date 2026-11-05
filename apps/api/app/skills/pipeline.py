@@ -193,7 +193,8 @@ def render_files(m: Manifest, instructions: str, code: str | None, usage: str, t
 
 
 def round_summary(rnd: int, status: str, report: dict) -> dict:
-    failing = sorted(c["id"] for c in report["static"]["checks"] if c["status"] == "fail")
+    # include messages: a different error in the same check is a change, not a lack of progress
+    failing = sorted(f"{c['id']}: {c['message']}" for c in report["static"]["checks"] if c["status"] == "fail")
     failing += sorted(f"test:{x['name']}:{x['status']}" for x in report["tests"] if x["status"] != "pass")
     failing += sorted(f"eval:{e['name']}:{';'.join(e['reasons'])}" for e in report["evals"] if e["status"] != "pass")
     sm = report["summary"]
