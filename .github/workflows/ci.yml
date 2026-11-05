@@ -8,11 +8,29 @@ jobs:
   api:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: apps/api } }
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: aab, POSTGRES_PASSWORD: ci, POSTGRES_DB: aab }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://aab:ci@localhost:5432/aab
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --frozen
+      - run: docker pull python:3.12-slim  # enables the real sandbox tests
+      - run: uv run alembic upgrade head && uv run alembic check
       - run: uv run pytest
+
+  sdk-python:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: packages/sdk-python } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: PYTHONPATH=. uv run --no-project --python 3.8 --with pytest pytest -q tests
 
   web:
     runs-on: ubuntu-latest
