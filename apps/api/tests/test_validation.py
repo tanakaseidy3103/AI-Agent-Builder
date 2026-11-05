@@ -117,3 +117,18 @@ def test_expectation_shaped_unlike_output_schema_is_rejected():
     checks, _ = validate_package(code_package() | {"evals/cases.json": json.dumps(cases)})
     msg = next(c.message for c in checks if c.id == "code.evals")
     assert "['file', 'line']" in msg and "ok:" not in msg
+
+
+@pytest.mark.parametrize("src,missing", [
+    ("import ast\ndef run(d):\n    return {'x': ast.ExceptType}\n", "module 'ast' has no attribute 'ExceptType'"),
+    ("import re as regex\ndef run(d):\n    return {'x': regex.fullmatches('a', 'a')}\n", "module 're' has no attribute 'fullmatches'"),
+])
+def test_hallucinated_stdlib_api_is_reported(src, missing):
+    checks, _ = validate_package(code_package() | {"scripts/main.py": src})
+    c = next(c for c in checks if c.id == "python.api:scripts/main.py")
+    assert c.status == "fail" and missing in c.message and "(line" in c.message
+
+
+def test_real_stdlib_api_and_unknown_modules_pass():
+    src = "import ast\nimport re\ndef run(d):\n    return {'a': ast.ExceptHandler.__name__, 'b': bool(re.compile('x'))}\n"
+    assert statuses(code_package() | {"scripts/main.py": src})["python.api:scripts/main.py"] == "pass"
