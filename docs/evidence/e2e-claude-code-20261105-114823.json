@@ -1,0 +1,31 @@
+{
+  "target": "claude-code",
+  "skill": "python-code-analyzer",
+  "installed_at": ".claude\\skills\\python-code-analyzer",
+  "exit_code": 0,
+  "stderr_tail": "",
+  "skill_loaded": true,
+  "script_ran": true,
+  "findings_reported": {
+    "mutable-default": true,
+    "bare-except": true,
+    "unused-import": true
+  },
+  "passed": true,
+  "final_answer": "All findings are in `app/billing.py`:\n\n| Location | Rule | Fix |\n|---|---|---|\n| `billing.py:1` | `unused-import` | Remove `import json` — nothing in the file uses it. |\n| `billing.py:5` | `mutable-default` | Change the mutable default arg (list/dict) to `None` and initialize it inside the function body. |\n| `billing.py:5` | `missing-docstring` | Add a one-line docstring to the `charge` function describing what it does. |\n| `billing.py:8` | `bare-except` | Replace bare `except:` with `except Exception:` (or the specific error type) so `KeyboardInterrupt`/`SystemExit` aren't swallowed. |\n\nThe `bare-except` on line 8 is the highest-severity finding — it can silently suppress interpreter shutdown signals and make debugging very hard. The `mutable-default` on line 5 is a classic Python footgun where the default object is shared across all calls.\n\nNo parse errors; nothing skipped.",
+  "tool_calls": [
+    {
+      "name": "Skill",
+      "input": {
+        "skill": "python-code-analyzer"
+      }
+    },
+    {
+      "name": "Bash",
+      "input": {
+        "command": "python \"~\\AppData\\Local\\Temp\\aab-e2e-claude-code-07x_9po0\\.claude\\skills\\python-code-analyzer\\scripts\\cli.py\" --dir \"~\\AppData\\Local\\Temp\\aab-e2e-claude-code-07x_9po0\\app\"",
+        "description": "Run Python code analyzer on app/ folder"
+      }
+    }
+  ]
+}
