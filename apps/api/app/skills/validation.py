@@ -25,7 +25,7 @@ FORBIDDEN_MODULES = {
     "smtplib", "ssl", "requests", "pty", "signal", "resource", "importlib", "webbrowser",
 }
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "breakpoint", "input"}
-FORBIDDEN_OS_ATTRS = {"system", "popen", "fork", "kill", "execv", "execve", "execl", "spawnl", "spawnv", "remove", "unlink", "rmdir", "removedirs", "environ", "getenv", "putenv"}
+FORBIDDEN_OS_ATTRS = {"_exit", "write", "dup2", "system", "popen", "fork", "kill", "execv", "execve", "execl", "spawnl", "spawnv", "remove", "unlink", "rmdir", "removedirs", "environ", "getenv", "putenv"}
 PIP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*([<>=!~]=?[A-Za-z0-9.*]+)?$")
 
 

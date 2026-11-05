@@ -175,6 +175,9 @@ Verified against the real running API + Ollama (instruction Skill, 7 s). TypeScr
 - Code Skills: Python stdlib only; no external dependencies.
 - Generated tests are written by the same model as the code: `verified` means "consistent with its own tests in
   isolation", not "correct". Human review is still required.
+- `verified` is **not** a guarantee against adversarial content: hostile generated tests can be trivial or
+  (via obfuscated calls that evade the static policy) terminate the runner with a forged result. The security
+  guarantee of the sandbox is containment (no network, no host access), not result integrity.
 - Sandbox requires the API to run on a host with Docker. In the Compose container it reports `unavailable`.
 - Host-mode and container-mode API use different storage dirs; use one mode per database.
 - No user accounts yet: Studio is local-only; API keys are global, not per project.

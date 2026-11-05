@@ -60,6 +60,7 @@ def test_syntax_error_detected():
     "def run(d): return eval('1')",
     "def run(d):\n    open('/x', 'w')\n    return {}",
     "import numpy\ndef run(d): return {}",
+    "import os\ndef run(d):\n    os._exit(0)",
 ])
 def test_policy_blocks_dangerous_or_undeclared_code(src):
     assert statuses(code_package() | {"scripts/main.py": src})["python.policy:scripts/main.py"] == "fail"
