@@ -1,5 +1,6 @@
 """Skill Studio API (local-only until user auth exists)."""
 from collections.abc import Callable
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -19,10 +20,11 @@ router = APIRouter(prefix="/studio", tags=["studio"], dependencies=[Depends(requ
 
 class GenerateIn(BaseModel):
     prompt: str = Field(min_length=10, max_length=4000)
+    kind: Literal["auto", "instructions", "code"] = "auto"
 
 
 def _job_out(j: GenerationJob) -> dict:
-    return {"id": j.id, "prompt": j.prompt, "status": j.status, "stage": j.stage, "stages": j.stages,
+    return {"id": j.id, "prompt": j.prompt, "requested_kind": j.requested_kind, "status": j.status, "stage": j.stage, "stages": j.stages,
             "error": j.error, "provider": j.provider, "skill_version_id": j.skill_version_id,
             "created_at": j.created_at, "updated_at": j.updated_at}
 
@@ -43,7 +45,7 @@ def _get_version(s: Session, version_id: str) -> SkillVersion:
 def generate(body: GenerateIn, bg: BackgroundTasks, s: Session = Depends(get_session),
              factory: Callable[[], Session] = Depends(get_session_factory),
              provider: LLMProvider = Depends(get_provider)) -> dict:
-    job = GenerationJob(prompt=body.prompt.strip())
+    job = GenerationJob(prompt=body.prompt.strip(), requested_kind=None if body.kind == "auto" else body.kind)
     s.add(job)
     audit(s, "skill.generate.requested", job.id, provider=provider.name)
     s.commit()

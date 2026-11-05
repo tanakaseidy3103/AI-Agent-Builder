@@ -44,6 +44,7 @@ class GenerationJob(Base):
     __tablename__ = "generation_jobs"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
     prompt: Mapped[str] = mapped_column(Text)
+    requested_kind: Mapped[str | None] = mapped_column(String(16))  # None = let the model decide
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | completed | failed
     stage: Mapped[str | None] = mapped_column(String(32))
     stages: Mapped[list] = mapped_column(JSON, default=list)  # [{name, status, detail, duration_ms}]

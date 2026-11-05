@@ -106,6 +106,29 @@ def test_sandbox_unavailable_is_reported_not_faked(factory, fake, monkeypatch):
         assert s.query(ValidationRun).one().report["sandbox"]["status"] == "unavailable"
 
 
+def test_invalid_output_schema_gets_spec_repair(factory, fake, sbx_pass):
+    bad_spec = SPEC_CODE | {"output_schema": {"type": "array"}}
+    fake.responses = [bad_spec, SPEC_CODE, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}]
+    job, v = _run(factory, fake)
+    assert "schema repair" in job.stages[1]["detail"]
+    assert v.status == "verified"
+
+
+def test_user_requested_kind_overrides_model(factory, fake, sbx_pass):
+    fake.responses = [SPEC_INSTR | {"name": "Counter"}, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}]
+    with factory() as s:
+        job = GenerationJob(prompt="count things in files", requested_kind="code")
+        s.add(job)
+        s.commit()
+        jid = job.id
+    run_generation(jid, factory, fake)
+    with factory() as s:
+        job = s.get(GenerationJob, jid)
+        assert "overridden to code" in job.stages[0]["detail"]
+        assert 'kind="code"' in fake.calls[0][1]
+        assert s.get(SkillVersion, job.skill_version_id).kind == "code"
+
+
 def test_same_name_creates_new_version_not_overwrite(factory, fake, sbx_pass):
     fake.responses = [SPEC_INSTR, SPEC_INSTR]
     _, v1 = _run(factory, fake, "commit messages one two")

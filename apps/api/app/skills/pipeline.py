@@ -17,7 +17,7 @@ from app.models import GenerationJob, Skill, SkillVersion, ValidationRun, audit
 from app.skills import sandbox, storage
 from app.skills.package import Manifest, manifest_json, render_skill_md, slugify
 from app.skills.templates import CLI, how_to_run
-from app.skills.validation import validate_package, summarize
+from app.skills.validation import _schema_ok, summarize, validate_package
 
 STAGES = ["analyze", "specify", "plan", "generate_files", "static_validation",
           "test_generation", "sandbox_tests", "report", "package"]
@@ -47,13 +47,32 @@ Return JSON only. Fields:
 - instructions: markdown steps the agent should follow.
 - tools: agent tools needed, e.g. ["Read","Grep"]. permissions: subset of ["compute","read-input-files","llm"].
 - input_schema/output_schema: JSON Schema objects ({"type":"object","properties":{...},"required":[...]}).
+  Both MUST have "type":"object" at the top level; wrap lists in a property, e.g.
+  {"type":"object","properties":{"findings":{"type":"array"},"count":{"type":"integer"}}}.
   For skills that analyze a project, use input {"files": object mapping path->source text}.
 Code skills run offline with the Python standard library only: no network, no file writes, no subprocess."""
 
-CODE_SYSTEM = """Write one Python 3.12 module implementing the Skill.
+CODE_SYSTEM = """Write one PYTHON 3.12 module implementing the Skill. The code must be Python, never JavaScript,
+even when the Skill analyzes JavaScript/TypeScript: source files arrive as plain text strings, so analyze them with
+`re` and string methods. Do not import any third-party package or invent helper libraries.
 Rules: define top-level `def run(data: dict) -> dict` that takes input matching input_schema and returns a dict matching
 output_schema. Standard library only. Forbidden: subprocess, socket, urllib, http, os.system, os.environ, eval, exec,
-open() for writing, network access. Must be deterministic. Return JSON: {"code": "<module source>", "usage": "<one line>"}."""
+open() for writing, network access. Must be deterministic.
+Example shape (adapt to the Skill):
+import re
+
+PATTERN = re.compile(r"something")
+
+
+def run(data: dict) -> dict:
+    findings = []
+    for path, text in data.get("files", {}).items():
+        for i, line in enumerate(text.splitlines(), 1):
+            if PATTERN.search(line):
+                findings.append({"file": path, "line": i, "issue": "...", "recommendation": "..."})
+    return {"findings": findings, "count": len(findings)}
+
+Return JSON: {"code": "<module source>", "usage": "<one line>"}."""
 
 TESTS_SYSTEM = """Write Python unittest tests for the module below. The module is importable as `from main import run`.
 Rules: `import unittest`; a class extending unittest.TestCase; at least 3 test methods; only stdlib; inputs must match
@@ -172,16 +191,29 @@ def run_generation(job_id: str, session_factory: Callable[[], Session], provider
 
 def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider) -> None:
     t.start("analyze")
-    spec = provider.complete_json(SPEC_SYSTEM, f"Skill request:\n{job.prompt}", SPEC_SCHEMA)
-    t.done("analyze", detail=f"kind={spec.get('kind')} name={spec.get('name')!r}")
+    hint = f"\nThe user requires kind=\"{job.requested_kind}\"." if job.requested_kind else ""
+    spec = provider.complete_json(SPEC_SYSTEM, f"Skill request:\n{job.prompt}{hint}", SPEC_SCHEMA)
+    detail = f"kind={spec.get('kind')} name={spec.get('name')!r}"
+    if job.requested_kind and spec.get("kind") != job.requested_kind:
+        detail += f" (overridden to {job.requested_kind} by user)"
+        spec["kind"] = job.requested_kind
+    t.done("analyze", detail=detail)
 
     t.start("specify")
+    spec_note = ""
+    bad = [k for k in ("input_schema", "output_schema") if not _schema_ok(spec.get(k))]
+    if bad:  # one repair attempt for the I/O contract
+        fixed = provider.complete_json(SPEC_SYSTEM, f"Skill request:\n{job.prompt}{hint}\n\nYour previous spec:\n"
+                                       f"{json.dumps(spec)}\n\nInvalid: {bad} must be type object with required ⊆ properties. "
+                                       "Return the corrected full spec.", SPEC_SCHEMA)
+        spec = {**fixed, "kind": spec["kind"]}
+        spec_note = "; 1 schema repair"
     slug = slugify(str(spec.get("name") or "skill"))
     skill = s.scalar(select(Skill).where(Skill.slug == slug))
     version = "0.1.0" if skill is None else f"0.{len(skill.versions) + 1}.0"  # new version, never overwrite
     m = build_manifest(spec, slug, version)
     instructions = str(spec.get("instructions") or m.description)
-    t.done("specify", detail=f"{m.id}@{m.version}; permissions={m.permissions}")
+    t.done("specify", detail=f"{m.id}@{m.version}; permissions={m.permissions}{spec_note}")
 
     t.start("plan")
     plan = ["SKILL.md", "manifest.json", "README.md"]
