@@ -76,6 +76,7 @@ class FakeProvider:
     def __init__(self, responses: list):
         self.responses = list(responses)
         self.calls: list[tuple[str, str]] = []
+        self.schemas: list[dict] = []  # schemas passed to complete_json, for asserting structured-output contracts
 
     def _next(self, system: str, user: str):
         self.calls.append((system, user))
@@ -87,6 +88,7 @@ class FakeProvider:
         return item
 
     def complete_json(self, system: str, user: str, schema: dict) -> dict:
+        self.schemas.append(schema)
         return self._next(system, user)
 
     def complete(self, system: str, user: str) -> str:

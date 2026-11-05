@@ -207,3 +207,11 @@ def test_unexpected_exception_marks_job_failed(factory, fake, sbx, monkeypatch):
     fake.responses = list(CODE_RESPONSES)
     job, v = _run(factory, fake)
     assert job.status == "failed" and "disk full" in job.error and v is None
+
+
+def test_eval_case_schema_embeds_the_skill_input_schema(factory, fake, sbx):
+    fake.responses = list(CODE_RESPONSES)
+    _run(factory, fake)
+    cases = fake.schemas[1]["properties"]["cases"]  # schemas[0] is the spec
+    assert cases["items"]["properties"]["input"] == SPEC_CODE["input_schema"]
+    assert cases["minItems"] == 2 and "expect" in cases["items"]["required"]
