@@ -958,6 +958,50 @@
         }
       ],
       "attempt": 3
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "hard",
+      "task": "laravel-bugs",
+      "seconds_total": 220.3,
+      "seconds_llm_stages": 87.3,
+      "seconds_validation_last_round": 1.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/5",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/5 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "attempt": 3
     }
   ]
 }
