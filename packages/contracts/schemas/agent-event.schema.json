@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-event.schema.json",
+  "title": "AgentEvent",
+  "description": "Real state change of an agent, emitted by the backend runtime. Consumed by web UI and Unity.",
+  "type": "object",
+  "required": ["agent_id", "state", "at"],
+  "properties": {
+    "agent_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "state": {
+      "enum": ["idle", "planning", "working", "testing", "waiting_for_approval", "completed", "failed"]
+    },
+    "message": { "type": ["string", "null"] },
+    "at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}
