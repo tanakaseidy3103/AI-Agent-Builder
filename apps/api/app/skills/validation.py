@@ -46,6 +46,31 @@ def _imports(tree: ast.AST) -> set[str]:
     return out
 
 
+# Stdlib modules that are side-effect free to import on the host, used to check `module.attr` references.
+# Host and sandbox both run Python 3.12, so attribute sets match.
+INTROSPECTABLE = {"ast", "re", "json", "collections", "itertools", "functools", "math", "string", "textwrap",
+                  "typing", "dataclasses", "statistics", "difflib", "fnmatch", "operator", "copy", "enum", "heapq",
+                  "bisect", "keyword", "tokenize", "unicodedata", "html", "posixpath", "datetime", "decimal"}
+
+
+def _missing_stdlib_attrs(tree: ast.AST) -> list[str]:
+    """Catch hallucinated APIs (benchmark: `ast.ExceptType`) before they cost a sandbox round."""
+    import importlib
+    alias = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name in INTROSPECTABLE:
+                    alias[a.asname or a.name] = a.name
+    out = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in alias:
+            mod = importlib.import_module(alias[node.value.id])
+            if not hasattr(mod, node.attr):
+                out.add(f"module '{alias[node.value.id]}' has no attribute '{node.attr}' (line {node.lineno})")
+    return sorted(out)
+
+
 def _forbidden_usage(tree: ast.AST) -> list[str]:
     found = []
     for node in ast.walk(tree):
@@ -149,6 +174,9 @@ def validate_package(files: dict[str, str]) -> tuple[list[Check], Manifest | Non
                    ([f"undeclared non-stdlib imports {external}"] if external else []) + \
                    ([f"forbidden calls {usage}"] if usage else [])
         add(f"python.policy:{p}", "fail" if problems else "pass", "; ".join(problems) or "stdlib only, no forbidden calls")
+        missing = _missing_stdlib_attrs(tree)
+        add(f"python.api:{p}", "fail" if missing else "pass",
+            "; ".join(missing)[:400] or "every referenced stdlib attribute exists")
 
     # kind-specific
     if manifest.kind == "code":
@@ -246,6 +274,7 @@ HINTS = {
     "manifest.dependencies": "Rewrite with the Python standard library; external packages cannot be installed offline.",
     "manifest.compatibility": "Use only claude-code, codex, cursor.",
     "python.syntax": "The file does not parse. Regenerate or fix the reported line.",
+    "python.api": "A referenced stdlib attribute does not exist in Python 3.12 (hallucinated API); use a real one.",
     "python.policy": "Remove forbidden modules/calls (subprocess, socket, eval, os.system, writes) or non-stdlib imports.",
     "code.entrypoint": "scripts/main.py must define a top-level def run(data: dict) -> dict.",
     "code.tests": f"Add tests/test_main.py with ≥{MIN_TESTS} unittest methods, each asserting something.",

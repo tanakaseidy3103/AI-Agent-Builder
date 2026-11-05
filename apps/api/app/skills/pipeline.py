@@ -39,7 +39,7 @@ STAGE_STATE = {"analyze": "planning", "specify": "planning", "plan": "planning",
 # code.evals: the repair prompt only rewrites main.py/tests, so bad eval cases can never be fixed by it.
 UNREPAIRABLE = ("structure.", "manifest.", "skill_md.", "code.evals")
 # Test-file failures that justify accepting rewritten tests during repair; otherwise tests stay frozen.
-BROKEN_TESTS = ("python.syntax:tests", "python.policy:tests", "code.tests")
+BROKEN_TESTS = ("python.syntax:tests", "python.policy:tests", "python.api:tests", "code.tests")
 
 SPEC_SCHEMA = {
     "type": "object",
