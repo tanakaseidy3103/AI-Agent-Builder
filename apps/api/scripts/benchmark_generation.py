@@ -144,6 +144,9 @@ def one(factory, provider, difficulty, task_id, prompt) -> dict:
             "eval_failures": [e["reasons"] for e in run.report.get("evals", []) if e["status"] != "pass"][:3] if run else None,
             "criteria": run.report["criteria"] if run else None,
             "code_sha": _code_sha(v),
+            "repair_history": [{k: h[k] for k in ("round", "status", "tests", "evals", "signature") if k in h}
+                               | ({"stopped": h["stopped"]} if "stopped" in h else {})
+                               for h in run.report.get("repair_history", [])] if run else None,
         }
 
 
