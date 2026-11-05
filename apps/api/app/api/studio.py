@@ -10,10 +10,12 @@ from sqlalchemy.orm import Session
 from app.auth import hash_key, new_key, require_local
 from app.db import get_session, get_session_factory
 from app.llm import LLMProvider, get_provider
+from app.llm import LLMError
 from app.models import (ApiKey, AuditEvent, ExportRecord, GenerationJob, Skill, SkillVersion, ValidationRun, audit, now)
 from app.skills import adapters, storage
-from app.skills.package import Manifest, safe_relpath
-from app.skills.pipeline import full_validation, run_generation
+from app.skills.evaluation import full_validation
+from app.skills.package import Manifest, safe_relpath, slugify
+from app.skills.pipeline import build_manifest, plan_spec, run_generation
 
 router = APIRouter(prefix="/studio", tags=["studio"], dependencies=[Depends(require_local)])
 
@@ -21,11 +23,42 @@ router = APIRouter(prefix="/studio", tags=["studio"], dependencies=[Depends(requ
 class GenerateIn(BaseModel):
     prompt: str = Field(min_length=10, max_length=4000)
     kind: Literal["auto", "instructions", "code"] = "auto"
+    spec: dict | None = None  # plan from POST /skills/plan, possibly edited by the user
+
+
+def _plan_preview(spec: dict) -> dict:
+    """What the user reviews before generation: kind, permissions, tools, files, contract."""
+    try:
+        m = build_manifest(spec, slugify(str(spec.get("name") or "skill")), "0.1.0")
+    except (ValueError, TypeError) as e:
+        raise HTTPException(422, f"invalid plan: {e}") from e
+    files = ["SKILL.md", "manifest.json", "README.md"] + (
+        ["scripts/main.py", "scripts/cli.py", "tests/test_main.py", "evals/cases.json", "docs/usage.md"] if m.kind == "code" else [])
+    warnings = []
+    if "network" in m.permissions:
+        warnings.append("Needs network/external services: the sandbox cannot grant this, so the Skill cannot be verified.")
+    if m.kind == "instructions":
+        warnings.append("Instruction-only: can reach 'validated' at most; nothing executable to verify.")
+    return {"slug": m.id, "kind": m.kind, "name": m.name, "description": m.description, "permissions": m.permissions,
+            "tools": m.tools, "external_services": spec.get("external_services") or [], "files": files,
+            "input_schema": m.input_schema, "output_schema": m.output_schema, "warnings": warnings}
+
+
+@router.post("/skills/plan")
+def plan(body: GenerateIn, provider: LLMProvider = Depends(get_provider)) -> dict:
+    """Step 1 of creation: let the model propose a plan; nothing is generated or stored yet."""
+    try:
+        spec = plan_spec(provider, body.prompt.strip(), None if body.kind == "auto" else body.kind)
+    except LLMError as e:
+        raise HTTPException(503, f"model unavailable: {e}") from e
+    spec.pop("_schema_repaired", None)
+    return {"spec": spec, "preview": _plan_preview(spec), "provider": provider.name}
 
 
 def _job_out(j: GenerationJob) -> dict:
     return {"id": j.id, "prompt": j.prompt, "requested_kind": j.requested_kind, "status": j.status, "stage": j.stage, "stages": j.stages,
             "error": j.error, "provider": j.provider, "skill_version_id": j.skill_version_id,
+            "approved_plan": j.approved_spec is not None,
             "created_at": j.created_at, "updated_at": j.updated_at}
 
 
@@ -45,7 +78,10 @@ def _get_version(s: Session, version_id: str) -> SkillVersion:
 def generate(body: GenerateIn, bg: BackgroundTasks, s: Session = Depends(get_session),
              factory: Callable[[], Session] = Depends(get_session_factory),
              provider: LLMProvider = Depends(get_provider)) -> dict:
-    job = GenerationJob(prompt=body.prompt.strip(), requested_kind=None if body.kind == "auto" else body.kind)
+    if body.spec is not None:
+        _plan_preview(body.spec)  # reject an invalid edited plan before queueing
+    job = GenerationJob(prompt=body.prompt.strip(), requested_kind=None if body.kind == "auto" else body.kind,
+                        approved_spec=body.spec)
     s.add(job)
     audit(s, "skill.generate.requested", job.id, provider=provider.name)
     s.commit()
@@ -104,8 +140,9 @@ def get_file(version_id: str, path: str, s: Session = Depends(get_session)) -> R
 @router.post("/versions/{version_id}/validate")
 def validate(version_id: str, s: Session = Depends(get_session)) -> dict:
     v = _get_version(s, version_id)
-    status, report = full_validation(storage.read_package(v.storage_key))
-    run = ValidationRun(skill_version_id=v.id, status=status, report=report, duration_ms=report["duration_ms"])
+    prev = s.scalar(select(ValidationRun).where(ValidationRun.skill_version_id == v.id).order_by(ValidationRun.created_at.desc()).limit(1))
+    status, report = full_validation(storage.read_package(v.storage_key), prev.model if prev else None)
+    run = ValidationRun.from_report(v.id, status, report)
     v.status = status
     s.add(run)
     audit(s, "skill.validated", v.id, status=status)
@@ -185,3 +222,38 @@ def revoke_key(key_id: str, s: Session = Depends(get_session)) -> Response:
 def audit_log(s: Session = Depends(get_session)) -> list[dict]:
     rows = s.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(100))
     return [{"action": a.action, "target": a.target, "detail": a.detail, "created_at": a.created_at} for a in rows]
+
+
+@router.post("/reference/seed")
+def seed_reference(s: Session = Depends(get_session)) -> list[dict]:
+    """Import the human-written reference Skills and evaluate them in the sandbox (real runs)."""
+    from app.skills.reference import seed
+    return seed(s)
+
+
+@router.get("/evaluations")
+def evaluations(s: Session = Depends(get_session)) -> list[dict]:
+    """Per Skill and version: latest real validation run numbers. Nothing here is estimated."""
+    out = []
+    for sk in s.scalars(select(Skill).order_by(Skill.slug)):
+        versions = []
+        for v in sk.versions:
+            runs = list(s.scalars(select(ValidationRun).where(ValidationRun.skill_version_id == v.id)
+                                  .order_by(ValidationRun.created_at.desc())))
+            if not runs:
+                continue
+            r = runs[0]
+            total = r.tests_total + r.evals_total
+            passed = r.tests_passed + r.evals_passed
+            versions.append({
+                "version_id": v.id, "version": v.version, "status": v.status, "kind": v.kind,
+                "origin": v.manifest.get("origin", "generated"), "model": r.model, "runs": len(runs),
+                "tests_total": r.tests_total, "tests_passed": r.tests_passed,
+                "evals_total": r.evals_total, "evals_passed": r.evals_passed,
+                "success_rate": round(passed / total, 3) if total else None,
+                "duration_ms": r.duration_ms, "validated_at": r.created_at,
+                "criteria": r.report.get("criteria", []), "repair_rounds": r.report.get("repair_rounds"),
+            })
+        if versions:
+            out.append({"slug": sk.slug, "name": sk.name, "versions": versions})
+    return out

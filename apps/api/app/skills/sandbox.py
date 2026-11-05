@@ -43,14 +43,44 @@ if mode == "test":
         def addSkip(self, t, r): super().addSkip(t, r); results.append({"name": t.id(), "status": "skip", "detail": r})
     unittest.TextTestRunner(stream=io.StringIO(), resultclass=R).run(suite)
     emit({"tests": results})
+
+def load(entry):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("skill_entry", "/tmp/w/" + entry)
+    mod = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, "/tmp/w/" + entry.rsplit("/", 1)[0])
+    spec.loader.exec_module(mod)
+    return mod
+
+if mode == "eval":
+    import contextlib, copy, time
+    entry = sys.argv[2]
+    with open("/tmp/w/_cases.json", encoding="utf-8") as f:
+        cases = json.load(f)
+    try:
+        mod = load(entry)
+    except Exception as e:
+        emit({"load_error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-2000:]})
+    out = []
+    for case in cases:
+        rec = {"name": case.get("name"), "outputs": [], "error": None, "stdout": "", "duration_ms": 0}
+        buf = io.StringIO()
+        t0 = time.perf_counter()
+        try:
+            with contextlib.redirect_stdout(buf):
+                for _ in range(2):  # twice: determinism check happens on the host
+                    rec["outputs"].append(json.loads(json.dumps(mod.run(copy.deepcopy(case["input"])))))
+        except Exception as e:
+            rec["error"] = f"{type(e).__name__}: {e}"
+            rec["trace"] = traceback.format_exc()[-1500:]
+        rec["duration_ms"] = int((time.perf_counter() - t0) * 1000)
+        rec["stdout"] = buf.getvalue()[-1000:]
+        out.append(rec)
+    emit({"cases": out})
 else:
     entry = sys.argv[2]
     try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("skill_entry", "/tmp/w/" + entry)
-        mod = importlib.util.module_from_spec(spec)
-        sys.path.insert(0, "/tmp/w/" + entry.rsplit("/", 1)[0])
-        spec.loader.exec_module(mod)
+        mod = load(entry)
         with open("/tmp/w/_input.json", encoding="utf-8") as f:
             data = json.load(f)
         out = mod.run(data)
@@ -140,6 +170,11 @@ def execute(files: dict[str, str], args: list[str], *, input_data: dict | None =
 
 def run_tests(files: dict[str, str], test_dir: str, timeout_s: int, memory_mb: int) -> SandboxResult:
     return execute(files, ["test", test_dir], timeout_s=timeout_s, memory_mb=memory_mb)
+
+
+def run_evals(files: dict[str, str], entrypoint: str, cases: list[dict], timeout_s: int, memory_mb: int) -> SandboxResult:
+    extra_files = {**files, "_cases.json": json.dumps(cases)}
+    return execute(extra_files, ["eval", entrypoint], timeout_s=timeout_s, memory_mb=memory_mb)
 
 
 def run_entrypoint(files: dict[str, str], entrypoint: str, data: dict, timeout_s: int, memory_mb: int) -> SandboxResult:

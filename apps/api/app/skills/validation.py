@@ -162,12 +162,88 @@ def validate_package(files: dict[str, str]) -> tuple[list[Check], Manifest | Non
                 f"{ex.entrypoint} defines run(data)" if has_run else f"{ex.entrypoint} must define top-level run(data: dict) -> dict")
         test_dir = manifest.tests.path if manifest.tests else "tests"
         test_files = [p for p in py_files if p.startswith(f"{test_dir}/") and PurePosixPath(p).name.startswith("test")]
-        add("code.tests", "pass" if test_files else "fail",
-            f"{len(test_files)} test file(s)" if test_files else "code Skills need tests/test_*.py to be verifiable")
+        methods = [m for p in test_files if p in trees for m in _test_methods(trees[p])]
+        empty = [name for name, n_asserts in methods if n_asserts == 0]
+        if not test_files:
+            add("code.tests", "fail", "code Skills need tests/test_*.py to be verifiable")
+        elif len(methods) < MIN_TESTS or empty:
+            add("code.tests", "fail", f"{len(methods)} test method(s); need ≥{MIN_TESTS}, each with an assertion"
+                + (f"; without assertions: {empty}" if empty else ""))
+        else:
+            add("code.tests", "pass", f"{len(methods)} test methods with assertions")
+        _check_evals(files, manifest, add)
     elif py_files:
         add("instructions.no_code", "warn", f"instruction-only Skill contains Python files: {py_files}")
 
     return checks, manifest
+
+
+MIN_TESTS = 3
+MIN_EVAL_CASES = 2
+EVALS_PATH = "evals/cases.json"
+
+
+def _test_methods(tree: ast.AST) -> list[tuple[str, int]]:
+    out = []
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test")):
+            n = sum(1 for x in ast.walk(fn) if isinstance(x, ast.Assert) or (
+                isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) and x.func.attr.startswith(("assert", "fail"))))
+            out.append((fn.name, n))
+    return out
+
+
+def load_cases(files: dict[str, str]) -> list[dict]:
+    data = json.loads(files[EVALS_PATH])
+    if not isinstance(data, list):
+        raise ValueError("evals/cases.json must be a JSON list")
+    return data
+
+
+def _check_evals(files: dict[str, str], manifest: Manifest, add) -> None:
+    from app.skills.jsonschema_lite import validate as schema_validate
+    if EVALS_PATH not in files:
+        add("code.evals", "fail", f"code Skills need {EVALS_PATH} with ≥{MIN_EVAL_CASES} cases")
+        return
+    try:
+        cases = load_cases(files)
+    except (json.JSONDecodeError, ValueError) as e:
+        add("code.evals", "fail", f"invalid {EVALS_PATH}: {e}")
+        return
+    problems = []
+    for i, c in enumerate(cases):
+        if not isinstance(c, dict) or not isinstance(c.get("name"), str) or not isinstance(c.get("input"), dict):
+            problems.append(f"case {i}: needs name (string) and input (object)")
+            continue
+        problems += [f"{c['name']}: {e}" for e in schema_validate(manifest.input_schema, c["input"])]
+        exp = c.get("expect")
+        if exp is not None and not (isinstance(exp, dict) and set(exp) <= {"equals", "contains"} and exp):
+            problems.append(f"{c['name']}: expect must be {{equals|contains: ...}}")
+    if len(cases) < MIN_EVAL_CASES:
+        problems.append(f"{len(cases)} case(s); need ≥{MIN_EVAL_CASES}")
+    add("code.evals", "fail" if problems else "pass", "; ".join(problems)[:500] or f"{len(cases)} eval cases")
+
+
+# How to fix each check family. Shown in the report next to failures.
+HINTS = {
+    "structure.paths": "Use relative paths inside scripts/, tests/, evals/, docs/ or examples/ with allowed extensions.",
+    "structure.required": "Every package needs SKILL.md and manifest.json.",
+    "manifest.schema": "Fix manifest.json fields (slug id, semver version, kind instructions|code).",
+    "skill_md.frontmatter": "SKILL.md must start with ---/name/description--- and name must equal manifest id.",
+    "manifest.io_schemas": "input_schema and output_schema must be {type: object, properties: {...}} with required ⊆ properties.",
+    "manifest.permissions": "Remove network/filesystem-write; the sandbox never grants them.",
+    "manifest.dependencies": "Rewrite with the Python standard library; external packages cannot be installed offline.",
+    "manifest.compatibility": "Use only claude-code, codex, cursor.",
+    "python.syntax": "The file does not parse. Regenerate or fix the reported line.",
+    "python.policy": "Remove forbidden modules/calls (subprocess, socket, eval, os.system, writes) or non-stdlib imports.",
+    "code.entrypoint": "scripts/main.py must define a top-level def run(data: dict) -> dict.",
+    "code.tests": f"Add tests/test_main.py with ≥{MIN_TESTS} unittest methods, each asserting something.",
+    "code.evals": f"Add {EVALS_PATH}: ≥{MIN_EVAL_CASES} cases with name, input matching input_schema, optional expect.",
+}
+
+
+def hint_for(check_id: str) -> str | None:
+    return HINTS.get(check_id.split(":")[0])
 
 
 def summarize(checks: list[Check]) -> dict:
@@ -175,5 +251,5 @@ def summarize(checks: list[Check]) -> dict:
         "passed": sum(c.status == "pass" for c in checks),
         "failed": sum(c.status == "fail" for c in checks),
         "warnings": sum(c.status == "warn" for c in checks),
-        "checks": [asdict(c) for c in checks],
+        "checks": [{**asdict(c), "hint": hint_for(c.id) if c.status == "fail" else None} for c in checks],
     }

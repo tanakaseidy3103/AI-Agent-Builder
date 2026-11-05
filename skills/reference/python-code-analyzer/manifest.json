@@ -1,0 +1,31 @@
+{
+  "format_version": "1",
+  "id": "python-code-analyzer",
+  "name": "Python Code Analyzer",
+  "description": "Statically analyzes Python source files for common defects (bare except, mutable default arguments, missing docstrings on public functions, overly long functions, unused imports). Use when reviewing Python code quality.",
+  "version": "1.0.0",
+  "kind": "code",
+  "tools": ["Read", "Bash"],
+  "dependencies": [],
+  "permissions": ["compute", "read-input-files"],
+  "input_schema": {
+    "type": "object",
+    "properties": {"files": {"type": "object", "additionalProperties": {"type": "string"}}},
+    "required": ["files"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "findings": {"type": "array", "items": {"type": "object", "properties": {
+        "file": {"type": "string"}, "line": {"type": "integer"}, "rule": {"type": "string"}, "message": {"type": "string"}},
+        "required": ["file", "line", "rule", "message"]}},
+      "count": {"type": "integer"},
+      "parse_errors": {"type": "array", "items": {"type": "string"}}
+    },
+    "required": ["findings", "count", "parse_errors"]
+  },
+  "execution": {"runtime": "python3.12", "entrypoint": "scripts/main.py", "timeout_seconds": 10, "memory_mb": 256},
+  "tests": {"framework": "unittest", "path": "tests"},
+  "compatibility": ["claude-code", "codex", "cursor"],
+  "origin": "reference"
+}

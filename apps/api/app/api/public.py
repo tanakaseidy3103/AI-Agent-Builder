@@ -13,13 +13,13 @@ from app.db import get_session
 from app.llm import LLMError, LLMProvider, get_provider
 from app.models import ApiKey, ExecutionLog, Skill, SkillVersion, audit
 from app.skills import sandbox, storage
+from app.skills.jsonschema_lite import validate as schema_validate
 from app.skills.package import Manifest, instructions_body
 
 router = APIRouter(prefix="/v1", tags=["public"])
 
 # Code Skills must pass sandbox tests; instruction-only Skills cannot be tested that way.
 RUNNABLE = {"code": {"verified"}, "instructions": {"validated", "verified"}}
-_PY_TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool, "object": dict, "array": list}
 
 
 class RunIn(BaseModel):
@@ -28,13 +28,7 @@ class RunIn(BaseModel):
 
 
 def check_input(schema: dict, data: dict) -> list[str]:
-    # shortcut: validates required keys and top-level property types only; use a full JSON Schema validator if schemas grow.
-    errors = [f"missing required field '{k}'" for k in schema.get("required", []) if k not in data]
-    for k, prop in schema.get("properties", {}).items():
-        t = prop.get("type") if isinstance(prop, dict) else None
-        if k in data and t in _PY_TYPES and not (isinstance(data[k], _PY_TYPES[t]) and not (t in ("integer", "number") and isinstance(data[k], bool))):
-            errors.append(f"field '{k}' must be {t}")
-    return errors
+    return schema_validate(schema, data)
 
 
 def _runnable_version(s: Session, slug: str, version: str | None) -> SkillVersion:
@@ -94,6 +88,9 @@ def run_skill(slug: str, body: RunIn, key: ApiKey = Depends(require_api_key), s:
             raise HTTPException(503, f"sandbox unavailable: {e}") from e
         if r.ok and r.data.get("ok"):
             output = r.data["output"]
+            bad = schema_validate(m.output_schema, output)
+            if bad:  # a verified Skill still must honour its contract at run time
+                output, error = None, f"output does not match output_schema: {bad[:3]}"
         else:
             error = r.error or r.data.get("error", "execution failed")
     else:
@@ -109,7 +106,7 @@ def run_skill(slug: str, body: RunIn, key: ApiKey = Depends(require_api_key), s:
                        duration_ms=int((time.monotonic() - t0) * 1000))
     s.add(log)
     s.flush()
-    audit(s, "skill.run", v.id, run_id=log.id, status=status, api_key=key.prefix)
+    audit(s, "skill.run", v.id, run_id=log.id, status=status, api_key_prefix=key.prefix)
     s.commit()
     return {"run_id": log.id, "status": status, "skill": slug, "version": v.version,
             "output": output, "error": error, "duration_ms": log.duration_ms}

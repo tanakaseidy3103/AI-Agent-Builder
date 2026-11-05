@@ -1,0 +1,28 @@
+[
+  {
+    "name": "next-app-with-tests",
+    "input": {"project_name": "Shop", "files": {
+      "package.json": "{\"name\":\"shop\",\"scripts\":{\"dev\":\"next dev\",\"build\":\"next build\",\"test\":\"jest\"},\"dependencies\":{\"next\":\"15.0.0\",\"react\":\"19.0.0\"},\"devDependencies\":{\"jest\":\"29\",\"tailwindcss\":\"4\"}}",
+      "app/page.tsx": "export default function Page() { return null }",
+      "app/layout.tsx": "export default function L({children}) { return children }",
+      "components/Cart.jsx": "export const Cart = () => null",
+      "__tests__/cart.test.js": "test('x', () => {})",
+      "Dockerfile": "FROM node:22"
+    }},
+    "expect": {"contains": {
+      "languages": {"TypeScript": 2, "JavaScript": 2},
+      "frameworks": ["Next.js", "React", "Jest", "Tailwind CSS", "Docker"],
+      "scripts": {"npm run dev": "next dev", "npm run build": "next build", "npm run test": "jest"},
+      "test_locations": ["__tests__"]
+    }}
+  },
+  {
+    "name": "laravel-project",
+    "input": {"files": {
+      "composer.json": "{\"require\":{\"laravel/framework\":\"^11.0\"}}",
+      "app/Models/User.php": "<?php",
+      "tests/Feature/UserTest.php": "<?php"
+    }},
+    "expect": {"contains": {"frameworks": ["Laravel"], "languages": {"PHP": 2}, "test_locations": ["tests/Feature"]}}
+  }
+]

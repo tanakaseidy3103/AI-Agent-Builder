@@ -1,0 +1,31 @@
+{
+  "format_version": "1",
+  "id": "react-accessibility-analyzer",
+  "name": "React Accessibility Analyzer",
+  "description": "Finds common accessibility (a11y) problems in React/JSX and HTML: images without alt, clickable div/span without role or keyboard handler, anchors without href, unlabeled inputs. Use when reviewing frontend accessibility.",
+  "version": "1.0.0",
+  "kind": "code",
+  "tools": ["Read", "Bash"],
+  "dependencies": [],
+  "permissions": ["compute", "read-input-files"],
+  "input_schema": {
+    "type": "object",
+    "properties": {"files": {"type": "object", "additionalProperties": {"type": "string"}}},
+    "required": ["files"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "findings": {"type": "array", "items": {"type": "object", "properties": {
+        "file": {"type": "string"}, "line": {"type": "integer"}, "rule": {"type": "string"},
+        "element": {"type": "string"}, "fix": {"type": "string"}}, "required": ["file", "line", "rule", "fix"]}},
+      "count": {"type": "integer"},
+      "files_scanned": {"type": "integer"}
+    },
+    "required": ["findings", "count", "files_scanned"]
+  },
+  "execution": {"runtime": "python3.12", "entrypoint": "scripts/main.py", "timeout_seconds": 10, "memory_mb": 256},
+  "tests": {"framework": "unittest", "path": "tests"},
+  "compatibility": ["claude-code", "codex", "cursor"],
+  "origin": "reference"
+}

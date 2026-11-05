@@ -21,7 +21,7 @@ def test_runs_generated_tests():
     r = sandbox.run_tests(code_package(), "tests", 10, 256)
     assert r.ok
     assert {t["status"] for t in r.data["tests"]} == {"pass"}
-    assert len(r.data["tests"]) == 2
+    assert len(r.data["tests"]) == 3
 
 
 def test_no_network():

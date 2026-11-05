@@ -1,26 +1,43 @@
-"""Generation pipeline with a deterministic fake LLM. The sandbox is mocked here; real sandbox in test_sandbox.py."""
+"""Generation pipeline with a deterministic fake LLM. Sandbox is faked here; real sandbox in test_evaluation.py."""
 import pytest
 
 from app.llm import LLMError
-from app.models import GenerationJob, SkillVersion, ValidationRun
+from app.models import AgentEventRow, GenerationJob, SkillVersion, ValidationRun
 from app.skills import sandbox, storage
-from app.skills.pipeline import STAGES, run_generation
-from tests.fixtures import CODE_FILES, SPEC_CODE, SPEC_INSTR
+from app.skills.pipeline import STAGES, extract_blocks, run_generation
+from tests.fixtures import CASES, CODE_RESPONSES, CODE_SCRIPT, CODE_TEST, SPEC_CODE, SPEC_INSTR, fenced
+
+
+def _pass_tests(n=3):
+    return sandbox.SandboxResult(True, {"tests": [{"name": f"t{i}", "status": "pass", "detail": ""} for i in range(n)]}, duration_ms=5)
+
+
+def _evals_from_code(files, entry, cases, t, m):
+    ns = {}
+    exec(files[entry], ns)  # test double only; production runs this inside the Docker sandbox
+    return sandbox.SandboxResult(True, {"cases": [{"name": c["name"], "outputs": [ns["run"](c["input"])] * 2, "error": None,
+                                                   "stdout": "", "duration_ms": 1} for c in cases]})
 
 
 @pytest.fixture
-def sbx_pass(monkeypatch):
-    calls = []
-    def fake_tests(files, test_dir, timeout, mem):
-        calls.append(files)
-        return sandbox.SandboxResult(True, {"tests": [{"name": "t1", "status": "pass", "detail": ""}]}, duration_ms=5)
-    monkeypatch.setattr(sandbox, "run_tests", fake_tests)
+def sbx(monkeypatch):
+    calls = {"tests": 0, "evals": 0}
+
+    def tests(*a):
+        calls["tests"] += 1
+        return _pass_tests()
+
+    def evals(*a):
+        calls["evals"] += 1
+        return _evals_from_code(*a)
+    monkeypatch.setattr(sandbox, "run_tests", tests)
+    monkeypatch.setattr(sandbox, "run_evals", evals)
     return calls
 
 
-def _run(factory, fake, prompt="Create a skill that analyzes React projects"):
+def _run(factory, fake, prompt="Create a skill that analyzes React projects", **job_fields):
     with factory() as s:
-        job = GenerationJob(prompt=prompt)
+        job = GenerationJob(prompt=prompt, **job_fields)
         s.add(job)
         s.commit()
         jid = job.id
@@ -31,30 +48,49 @@ def _run(factory, fake, prompt="Create a skill that analyzes React projects"):
         return job, v
 
 
-def test_code_skill_end_to_end_is_verified(factory, fake, sbx_pass):
-    fake.responses = [SPEC_CODE, {"code": CODE_FILES["script"], "usage": "x"}, {"code": CODE_FILES["tests"]}]
+def test_extract_blocks():
+    assert extract_blocks("x\n```python\na = 1\n```\ny\n```py\nb = 2\n```") == ["a = 1\n", "b = 2\n"]
+    assert extract_blocks("import re\ndef run(d): return {}") == ["import re\ndef run(d): return {}\n"]
+    assert extract_blocks("Sorry, I cannot.") == []
+
+
+def test_code_skill_end_to_end_is_verified(factory, fake, sbx):
+    fake.responses = list(CODE_RESPONSES)
     job, v = _run(factory, fake)
     assert job.status == "completed", job.error
     assert [st["name"] for st in job.stages] == STAGES
     assert all(st["status"] == "passed" for st in job.stages), job.stages
     assert v.status == "verified" and v.kind == "code"
     files = storage.read_package(v.storage_key)
-    assert {"SKILL.md", "manifest.json", "README.md", "scripts/main.py", "scripts/cli.py",
-            "tests/test_main.py", "docs/usage.md"} <= set(files)
-    assert files["SKILL.md"].startswith("---\nname: react-performance-analyzer\n")
-    assert "scripts/cli.py --dir" in files["SKILL.md"]
-    assert len(sbx_pass) == 1  # tests ran in the sandbox, not in-process
+    assert {"SKILL.md", "manifest.json", "scripts/main.py", "scripts/cli.py", "tests/test_main.py", "evals/cases.json"} <= set(files)
+    assert files["scripts/main.py"] == CODE_SCRIPT  # fenced block extracted exactly, no JSON escaping
+    assert sbx == {"tests": 1, "evals": 1}
+    with factory() as s:
+        run = s.query(ValidationRun).one()
+        assert (run.model, run.tests_total, run.tests_passed, run.evals_total, run.evals_passed) == ("fake", 3, 3, 2, 2)
+        assert [c["id"] for c in run.report["criteria"]] == ["static", "unit_tests", "eval_cases"]
 
 
-def test_instruction_skill_has_no_code_and_is_only_validated(factory, fake, sbx_pass):
+def test_events_mirror_real_stages(factory, fake, sbx):
+    fake.responses = list(CODE_RESPONSES)
+    job, _ = _run(factory, fake)
+    with factory() as s:
+        evs = s.query(AgentEventRow).filter_by(run_id=job.id).order_by(AgentEventRow.id).all()
+    started = [e.message.split(":")[0] for e in evs if e.message.endswith("started") or "started (" in e.message]
+    assert started[:4] == ["analyze", "specify", "plan", "generate_files"]
+    assert {e.agent_id for e in evs} == {"architect", "coder", "reviewer", "tester", "packager"}
+    assert evs[-1].agent_id == "packager" and evs[-1].state == "completed"
+
+
+def test_instruction_skill_has_no_code_and_is_only_validated(factory, fake, sbx):
     fake.responses = [SPEC_INSTR]
     job, v = _run(factory, fake, "Write commit messages from diffs please")
     assert job.status == "completed"
     assert v.status == "validated" and v.kind == "instructions"
     assert not any(p.endswith(".py") for p in storage.read_package(v.storage_key))
     st = {x["name"]: x["status"] for x in job.stages}
-    assert st["test_generation"] == "skipped" and st["sandbox_tests"] == "skipped"
-    assert sbx_pass == []
+    assert st["test_generation"] == st["sandbox_tests"] == st["evaluate"] == "skipped"
+    assert sbx == {"tests": 0, "evals": 0}
 
 
 def test_llm_unavailable_fails_honestly(factory, fake):
@@ -65,71 +101,73 @@ def test_llm_unavailable_fails_honestly(factory, fake):
     assert {x["name"]: x["status"] for x in job.stages}["analyze"] == "failed"
 
 
-def test_bad_code_gets_one_repair_then_stays_unverified(factory, fake, sbx_pass):
-    bad = {"code": "import subprocess\ndef run(d):\n    return {}"}
-    fake.responses = [SPEC_CODE, bad, bad]
+def test_bad_code_is_repaired_with_real_failure_feedback(factory, fake, sbx):
+    bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
+    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
+    job, v = _run(factory, fake)
+    assert v.status == "verified"
+    fix_prompt = fake.calls[4][1]
+    assert "python.policy:scripts/main.py" in fix_prompt and "subprocess" in fix_prompt
+    with factory() as s:
+        assert s.query(ValidationRun).one().report["repair_rounds"] == 1
+
+
+def test_repair_budget_is_bounded_and_failure_is_kept(factory, fake, sbx, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "max_repair_rounds", 2)
+    bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
+    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), bad + fenced(CODE_TEST), bad + fenced(CODE_TEST)]
     job, v = _run(factory, fake)
     assert job.status == "completed"
-    assert v.status == "generated"  # stored for inspection, NOT validated
-    st = {x["name"]: x for x in job.stages}
-    assert st["static_validation"]["status"] == "failed" and "subprocess" in st["static_validation"]["detail"]
-    assert "1 repair" in st["generate_files"]["detail"]
-    assert len(fake.calls) == 3 and "failed these checks" in fake.calls[2][1]
-    assert sbx_pass == []
+    assert v.status == "validation_failed"  # stored for inspection, never promoted
+    assert len(fake.calls) == 6 and fake.responses == []
+    assert {x["name"]: x["status"] for x in job.stages}["static_validation"] == "failed"
 
 
-def test_repair_that_succeeds_verifies(factory, fake, sbx_pass):
-    fake.responses = [SPEC_CODE, {"code": "def nope(): pass"}, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}]
+def test_sandbox_test_failure_traceback_reaches_the_model(factory, fake, monkeypatch):
+    results = iter([
+        sandbox.SandboxResult(True, {"tests": [{"name": "t", "status": "fail", "detail": "AssertionError: 2 != 1"}] * 3}),
+        _pass_tests(),
+    ])
+    monkeypatch.setattr(sandbox, "run_tests", lambda *a: next(results))
+    monkeypatch.setattr(sandbox, "run_evals", _evals_from_code)
+    fake.responses = list(CODE_RESPONSES) + [fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
     _, v = _run(factory, fake)
     assert v.status == "verified"
+    assert "AssertionError: 2 != 1" in fake.calls[4][1]
 
 
-def test_failing_sandbox_tests_leave_validated(factory, fake, monkeypatch):
-    monkeypatch.setattr(sandbox, "run_tests", lambda *a: sandbox.SandboxResult(
-        True, {"tests": [{"name": "t", "status": "fail", "detail": "AssertionError"}]}))
-    fake.responses = [SPEC_CODE, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}]
+def test_unrepairable_manifest_problem_stops_without_wasting_calls(factory, fake, sbx):
+    fake.responses = [SPEC_CODE | {"external_services": ["GitHub API"]}, fenced(CODE_SCRIPT), {"cases": CASES}, fenced(CODE_TEST)]
     job, v = _run(factory, fake)
-    assert v.status == "validated"
-    assert {x["name"]: x["status"] for x in job.stages}["sandbox_tests"] == "failed"
+    assert v.status == "validation_failed"
+    assert len(fake.calls) == 4  # no repair attempted: network permission can't be fixed by code
+    assert "network" in v.manifest["permissions"]
 
 
-def test_sandbox_unavailable_is_reported_not_faked(factory, fake, monkeypatch):
-    def unavailable(*a):
-        raise sandbox.SandboxUnavailable("Docker daemon is not running")
-    monkeypatch.setattr(sandbox, "run_tests", unavailable)
-    fake.responses = [SPEC_CODE, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}]
+def test_invalid_output_schema_gets_spec_repair(factory, fake, sbx):
+    fake.responses = [SPEC_CODE | {"output_schema": {"type": "array"}}] + list(CODE_RESPONSES)
     job, v = _run(factory, fake)
-    assert v.status == "validated"
-    sbx = {x["name"]: x for x in job.stages}["sandbox_tests"]
-    assert sbx["status"] == "skipped" and "Docker" in sbx["detail"]
-    with factory() as s:
-        assert s.query(ValidationRun).one().report["sandbox"]["status"] == "unavailable"
-
-
-def test_invalid_output_schema_gets_spec_repair(factory, fake, sbx_pass):
-    bad_spec = SPEC_CODE | {"output_schema": {"type": "array"}}
-    fake.responses = [bad_spec, SPEC_CODE, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}]
-    job, v = _run(factory, fake)
-    assert "schema repair" in job.stages[1]["detail"]
+    assert "schema repair" in job.stages[0]["detail"]
     assert v.status == "verified"
 
 
-def test_user_requested_kind_overrides_model(factory, fake, sbx_pass):
-    fake.responses = [SPEC_INSTR | {"name": "Counter"}, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}]
-    with factory() as s:
-        job = GenerationJob(prompt="count things in files", requested_kind="code")
-        s.add(job)
-        s.commit()
-        jid = job.id
-    run_generation(jid, factory, fake)
-    with factory() as s:
-        job = s.get(GenerationJob, jid)
-        assert "overridden to code" in job.stages[0]["detail"]
-        assert 'kind="code"' in fake.calls[0][1]
-        assert s.get(SkillVersion, job.skill_version_id).kind == "code"
+def test_user_requested_kind_overrides_model(factory, fake, sbx):
+    fake.responses = [SPEC_INSTR | {"name": "Counter", "input_schema": SPEC_CODE["input_schema"],
+                                    "output_schema": SPEC_CODE["output_schema"]}] + CODE_RESPONSES[1:]
+    _, v = _run(factory, fake, "count things in files", requested_kind="code")
+    assert 'kind="code"' in fake.calls[0][1]
+    assert v.kind == "code"
 
 
-def test_same_name_creates_new_version_not_overwrite(factory, fake, sbx_pass):
+def test_approved_plan_skips_analysis_call(factory, fake, sbx):
+    fake.responses = CODE_RESPONSES[1:]
+    job, v = _run(factory, fake, "analyze react", approved_spec=SPEC_CODE)
+    assert job.stages[0]["detail"] == "using the plan approved by the user"
+    assert v.status == "verified" and len(fake.calls) == 3
+
+
+def test_same_name_creates_new_version_not_overwrite(factory, fake, sbx):
     fake.responses = [SPEC_INSTR, SPEC_INSTR]
     _, v1 = _run(factory, fake, "commit messages one two")
     _, v2 = _run(factory, fake, "commit messages three four")

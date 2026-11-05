@@ -1,16 +1,20 @@
-"""Shared sample packages and fake LLM responses."""
+"""Shared sample packages and fake LLM responses.
+
+Fake LLM call order for a code Skill (see pipeline._pipeline):
+  1 complete_json  spec          2 complete  code (fenced)
+  3 complete_json  eval cases    4 complete  tests (fenced)
+  5+ complete      repair (two fenced blocks)
+"""
+import json
+
 from app.skills.package import Manifest, manifest_json, render_skill_md
 
 CODE_SCRIPT = '''import re
 
-HOOK_RE = re.compile(r"\\buse(State|Effect|Memo|Callback)\\b")
-
 
 def run(data: dict) -> dict:
     findings = []
-    for path, src in data.get("files", {}).items():
-        if "React.memo" not in src and "useMemo" not in src and "map(" in src:
-            findings.append({"file": path, "issue": "list rendering without memoization"})
+    for path, src in sorted(data.get("files", {}).items()):
         if re.search(r"onClick=\\{\\(\\) =>", src):
             findings.append({"file": path, "issue": "inline arrow handler re-created every render"})
     return {"findings": findings, "count": len(findings)}
@@ -27,7 +31,20 @@ class TestAnalyzer(unittest.TestCase):
 
     def test_clean_file(self):
         self.assertEqual(run({"files": {"A.tsx": "const a = 1"}})["count"], 0)
+
+    def test_output_shape(self):
+        self.assertIn("findings", run({"files": {}}))
 '''
+
+CASES = [
+    {"name": "inline", "input": {"files": {"App.tsx": "<b onClick={() => go()} />"}}},
+    {"name": "clean", "input": {"files": {"A.tsx": "const a = 1"}}, "expect": {"equals": {"findings": [], "count": 0}}},
+]
+
+
+def fenced(code: str) -> str:
+    return f"Here is the module:\n```python\n{code}```\n"
+
 
 SPEC_CODE = {
     "name": "React Performance Analyzer",
@@ -37,9 +54,12 @@ SPEC_CODE = {
     "tools": ["Read", "Grep"],
     "permissions": ["compute", "read-input-files"],
     "input_schema": {"type": "object", "properties": {"files": {"type": "object"}}, "required": ["files"]},
-    "output_schema": {"type": "object", "properties": {"findings": {"type": "array"}, "count": {"type": "integer"}}},
+    "output_schema": {"type": "object", "properties": {"findings": {"type": "array"}, "count": {"type": "integer"}},
+                      "required": ["findings", "count"]},
 }
-CODE_FILES = {"script": CODE_SCRIPT, "tests": CODE_TEST, "usage": "Call run({'files': {...}})."}
+
+# The four model replies of a successful code generation, in order.
+CODE_RESPONSES = [SPEC_CODE, fenced(CODE_SCRIPT), {"cases": CASES}, fenced(CODE_TEST)]
 
 SPEC_INSTR = {
     "name": "Commit Message Writer",
@@ -62,4 +82,5 @@ def code_package() -> dict[str, str]:
         "manifest.json": manifest_json(m),
         "scripts/main.py": CODE_SCRIPT,
         "tests/test_main.py": CODE_TEST,
+        "evals/cases.json": json.dumps(CASES),
     }

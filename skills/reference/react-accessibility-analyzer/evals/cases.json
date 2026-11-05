@@ -1,0 +1,22 @@
+[
+  {
+    "name": "product-card-with-four-issues",
+    "input": {"files": {"src/components/ProductCard.tsx": "export function ProductCard({ product, onSelect }) {\n  return (\n    <div className=\"card\" onClick={() => onSelect(product.id)}>\n      <img src={product.image} className=\"thumb\" />\n      <h3>{product.name}</h3>\n      <a href=\"#\" className=\"more\">Details</a>\n      <input type=\"number\" min={1} defaultValue={1} />\n    </div>\n  );\n}\n"}},
+    "expect": {"contains": {"count": 4, "files_scanned": 1, "findings": [
+      {"line": 3, "rule": "click-without-keyboard"},
+      {"line": 4, "rule": "img-alt"},
+      {"line": 6, "rule": "anchor-href"},
+      {"line": 7, "rule": "input-label"}
+    ]}}
+  },
+  {
+    "name": "accessible-form-is-clean",
+    "input": {"files": {"src/Login.jsx": "export default function Login() {\n  return (\n    <form>\n      <label htmlFor=\"email\">Email</label>\n      <input id=\"email\" type=\"email\" />\n      <img src=\"/logo.svg\" alt=\"Company logo\" />\n      <a href=\"/forgot\">Forgot password?</a>\n      <button type=\"submit\">Sign in</button>\n    </form>\n  );\n}\n"}},
+    "expect": {"equals": {"findings": [], "count": 0, "files_scanned": 1}}
+  },
+  {
+    "name": "ignores-non-frontend-files",
+    "input": {"files": {"README.md": "<img src=x>", "server.py": "html = '<img src=x>'"}},
+    "expect": {"equals": {"findings": [], "count": 0, "files_scanned": 0}}
+  }
+]

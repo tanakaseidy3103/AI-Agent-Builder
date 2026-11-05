@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 
-from app.api import public, studio
+from app.api import office, public, studio
 
 app = FastAPI(title="AI Agent Builder API", version="0.1.0")
 app.include_router(studio.router)
 app.include_router(public.router)
+app.include_router(office.router)
 
 
 @app.get("/health")

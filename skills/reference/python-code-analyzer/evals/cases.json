@@ -1,0 +1,22 @@
+[
+  {
+    "name": "flask-view-with-defects",
+    "input": {"files": {"app/views.py": "import json\nimport os\nfrom flask import request\n\n\ndef get_user(user_id, cache={}):\n    try:\n        return cache[user_id]\n    except:\n        return None\n\n\ndef _helper():\n    return os.getcwd()\n\n\ndef handler():\n    '''Handle request.'''\n    return request.args\n"}},
+    "expect": {"contains": {"count": 4, "findings": [
+      {"file": "app/views.py", "line": 1, "rule": "unused-import"},
+      {"file": "app/views.py", "rule": "mutable-default"},
+      {"file": "app/views.py", "line": 9, "rule": "bare-except"},
+      {"file": "app/views.py", "line": 6, "rule": "missing-docstring"}
+    ]}}
+  },
+  {
+    "name": "clean-module",
+    "input": {"files": {"pkg/math_utils.py": "\"\"\"Math helpers.\"\"\"\n\n\ndef add(a, b):\n    \"\"\"Return a + b.\"\"\"\n    return a + b\n"}},
+    "expect": {"equals": {"findings": [], "count": 0, "parse_errors": []}}
+  },
+  {
+    "name": "syntax-error-does-not-crash",
+    "input": {"files": {"broken.py": "def f(:\n    pass\n", "ok.py": "x = 1\n"}},
+    "expect": {"contains": {"count": 0, "parse_errors": ["broken.py:1: invalid syntax"]}}
+  }
+]

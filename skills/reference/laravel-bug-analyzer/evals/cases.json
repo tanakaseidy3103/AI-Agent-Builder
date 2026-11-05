@@ -1,0 +1,24 @@
+[
+  {
+    "name": "orders-controller-and-checkout-view",
+    "input": {"files": {
+      "app/Http/Controllers/OrderController.php": "<?php\n\nnamespace App\\Http\\Controllers;\n\nuse App\\Models\\Order;\nuse Illuminate\\Http\\Request;\nuse Illuminate\\Support\\Facades\\DB;\n\nclass OrderController extends Controller\n{\n    public function search(Request $request)\n    {\n        $status = $request->input('status');\n        $orders = DB::select(\"select * from orders where status = '$status'\");\n        return view('orders.index', compact('orders'));\n    }\n\n    public function store(Request $request)\n    {\n        $order = Order::create($request->all());\n        $key = env('PAYMENT_KEY');\n        dd($order);\n    }\n}\n",
+      "app/Models/Order.php": "<?php\n\nnamespace App\\Models;\n\nclass Order extends Model\n{\n    protected $guarded = [];\n}\n",
+      "resources/views/checkout.blade.php": "<form method=\"POST\" action=\"/orders\">\n  <input name=\"qty\">\n  <button>Buy</button>\n</form>\n",
+      "config/payment.php": "<?php return ['key' => env('PAYMENT_KEY')];\n"
+    }},
+    "expect": {"contains": {"count": 6, "by_severity": {"high": 3, "medium": 2, "low": 1}, "findings": [
+      {"file": "app/Http/Controllers/OrderController.php", "line": 14, "rule": "sql-injection"},
+      {"file": "app/Http/Controllers/OrderController.php", "line": 20, "rule": "unvalidated-mass-assignment"},
+      {"file": "resources/views/checkout.blade.php", "line": 1, "rule": "missing-csrf"},
+      {"file": "app/Http/Controllers/OrderController.php", "line": 21, "rule": "env-outside-config"},
+      {"file": "app/Models/Order.php", "line": 7, "rule": "mass-assignment-unguarded"},
+      {"file": "app/Http/Controllers/OrderController.php", "line": 22, "rule": "debug-left"}
+    ]}}
+  },
+  {
+    "name": "safe-controller-no-findings",
+    "input": {"files": {"app/Http/Controllers/UserController.php": "<?php\nclass UserController extends Controller\n{\n    public function show($id)\n    {\n        $user = DB::select('select * from users where id = ?', [$id]);\n        $name = config('app.name');\n        return User::create($request->validated());\n    }\n}\n"}},
+    "expect": {"equals": {"findings": [], "count": 0, "by_severity": {"high": 0, "medium": 0, "low": 0}}}
+  }
+]

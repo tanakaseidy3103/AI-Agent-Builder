@@ -8,7 +8,8 @@ from app.auth import _hits
 from app.config import settings
 from app.skills import sandbox
 from app.skills.package import parse_frontmatter
-from tests.fixtures import CODE_FILES, SPEC_CODE, SPEC_INSTR
+from tests.fixtures import CODE_RESPONSES, CODE_TEST, SPEC_CODE, SPEC_INSTR, fenced
+from tests.test_pipeline import _evals_from_code, _pass_tests
 
 
 @pytest.fixture(autouse=True)
@@ -18,8 +19,8 @@ def _reset_rate_limit():
 
 @pytest.fixture
 def sbx(monkeypatch):
-    monkeypatch.setattr(sandbox, "run_tests", lambda *a: sandbox.SandboxResult(
-        True, {"tests": [{"name": "t", "status": "pass", "detail": ""}]}))
+    monkeypatch.setattr(sandbox, "run_tests", lambda *a: _pass_tests())
+    monkeypatch.setattr(sandbox, "run_evals", _evals_from_code)
     def fake_run(files, entry, data, t, m):
         ns = {}
         exec(files[entry], ns)  # test double only; production uses the Docker sandbox
@@ -31,13 +32,13 @@ def _generate(client, fake, responses, prompt="Analyze React projects for perfor
     fake.responses = list(responses)
     job = client.post("/studio/skills/generate", json={"prompt": prompt}).json()
     job = client.get(f"/studio/jobs/{job['id']}").json()  # TestClient runs background tasks before returning
-    assert job["status"] == "completed", job
+    assert job["status"] == "completed", job["error"]
     return job["skill_version_id"]
 
 
 @pytest.fixture
 def code_version(client, fake, sbx):
-    return _generate(client, fake, [SPEC_CODE, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}])
+    return _generate(client, fake, CODE_RESPONSES)
 
 
 @pytest.fixture
@@ -103,8 +104,9 @@ def test_export_installs_into_fake_home_and_runs_cli(client, code_version, tmp_p
 
 
 def test_export_blocked_for_unvalidated(client, fake, sbx):
-    vid = _generate(client, fake, [SPEC_CODE, {"code": "import socket\ndef run(d): return {}"}, {"code": "import socket"}])
-    assert client.get(f"/studio/versions/{vid}").json()["status"] == "generated"
+    bad = fenced("import socket\ndef run(d):\n    return {}\n")
+    vid = _generate(client, fake, [SPEC_CODE, bad, {"cases": []}, fenced(CODE_TEST)] + [bad + fenced(CODE_TEST)] * 3)
+    assert client.get(f"/studio/versions/{vid}").json()["status"] == "validation_failed"
     assert client.get(f"/studio/versions/{vid}/export/claude-code").status_code == 409
 
 
@@ -138,7 +140,7 @@ def test_v1_list_get_run(client, code_version, api_key):
 def test_v1_input_validation(client, code_version, api_key):
     h = {"Authorization": f"Bearer {api_key}"}
     r = client.post("/v1/skills/react-performance-analyzer/run", headers=h, json={"input": {"files": "nope"}})
-    assert r.status_code == 422 and "must be object" in str(r.json())
+    assert r.status_code == 422 and "expected object" in str(r.json())
     r = client.post("/v1/skills/react-performance-analyzer/run", headers=h, json={"input": {}})
     assert r.status_code == 422 and "missing required" in str(r.json())
 
@@ -167,8 +169,9 @@ def test_rate_limit(client, code_version, api_key, monkeypatch):
 
 def test_unverified_code_skill_not_runnable(client, fake, api_key, monkeypatch):
     monkeypatch.setattr(sandbox, "run_tests", lambda *a: sandbox.SandboxResult(
-        True, {"tests": [{"name": "t", "status": "fail", "detail": ""}]}))
-    _generate(client, fake, [SPEC_CODE, {"code": CODE_FILES["script"]}, {"code": CODE_FILES["tests"]}])
+        True, {"tests": [{"name": "t", "status": "fail", "detail": "boom"}] * 3}))
+    monkeypatch.setattr(sandbox, "run_evals", _evals_from_code)
+    _generate(client, fake, CODE_RESPONSES + [fenced("def run(d):\n    return {}\n") + fenced(CODE_TEST)] * 3)
     r = client.post("/v1/skills/react-performance-analyzer/run", headers={"Authorization": f"Bearer {api_key}"},
                     json={"input": {"files": {}}})
     assert r.status_code == 409

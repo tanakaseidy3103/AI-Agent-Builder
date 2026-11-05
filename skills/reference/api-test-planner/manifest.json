@@ -1,0 +1,32 @@
+{
+  "format_version": "1",
+  "id": "api-test-planner",
+  "name": "API Test Planner",
+  "description": "Turns an OpenAPI 3 document into a concrete API test plan: happy path, missing required body fields, unknown path ids and missing authentication for every operation, plus contract warnings. Use before writing or reviewing API tests.",
+  "version": "1.0.0",
+  "kind": "code",
+  "tools": ["Read", "Bash"],
+  "dependencies": [],
+  "permissions": ["compute", "read-input-files"],
+  "input_schema": {
+    "type": "object",
+    "properties": {"openapi": {"type": "object"}},
+    "required": ["openapi"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "tests": {"type": "array", "items": {"type": "object", "properties": {
+        "id": {"type": "string"}, "method": {"type": "string"}, "path": {"type": "string"},
+        "case": {"type": "string"}, "expect_status": {"type": "string"}, "request": {"type": "object"}},
+        "required": ["id", "method", "path", "case", "expect_status", "request"]}},
+      "count": {"type": "integer"},
+      "warnings": {"type": "array", "items": {"type": "string"}}
+    },
+    "required": ["tests", "count", "warnings"]
+  },
+  "execution": {"runtime": "python3.12", "entrypoint": "scripts/main.py", "timeout_seconds": 10, "memory_mb": 256},
+  "tests": {"framework": "unittest", "path": "tests"},
+  "compatibility": ["claude-code", "codex", "cursor"],
+  "origin": "reference"
+}

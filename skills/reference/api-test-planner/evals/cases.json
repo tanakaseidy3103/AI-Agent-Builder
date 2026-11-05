@@ -1,0 +1,36 @@
+[
+  {
+    "name": "todo-api",
+    "input": {"openapi": {
+      "openapi": "3.1.0",
+      "info": {"title": "Todo", "version": "1"},
+      "security": [{"apiKey": []}],
+      "paths": {
+        "/todos": {
+          "get": {"operationId": "listTodos", "responses": {"200": {"description": "ok"}}},
+          "post": {"operationId": "createTodo",
+                   "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["title"], "properties": {"title": {"type": "string"}, "done": {"type": "boolean"}}}}}},
+                   "responses": {"201": {"description": "created"}, "400": {"description": "bad"}}}
+        },
+        "/todos/{todoId}": {"get": {"operationId": "getTodo", "responses": {"200": {"description": "ok"}, "404": {"description": "nf"}}}},
+        "/health": {"get": {"security": [], "responses": {"default": {"description": "?"}}}}
+      }
+    }},
+    "expect": {"contains": {
+      "count": 9,
+      "warnings": ["GET /health: no operationId", "GET /health: no 2xx response declared"],
+      "tests": [
+        {"id": "createTodo:happy-path", "expect_status": "201", "request": {"body": {"title": "example", "done": true}}},
+        {"id": "createTodo:missing-required-field", "expect_status": "400", "request": {"omitted": "title"}},
+        {"id": "getTodo:unknown-id", "expect_status": "404", "request": {"path_params": {"todoId": "does-not-exist"}}},
+        {"id": "listTodos:no-auth", "expect_status": "401"},
+        {"id": "get-health:happy-path", "expect_status": "2xx"}
+      ]
+    }}
+  },
+  {
+    "name": "swagger2-is-flagged",
+    "input": {"openapi": {"swagger": "2.0", "paths": {}}},
+    "expect": {"equals": {"tests": [], "count": 0, "warnings": ["not an OpenAPI 3 document (missing or unsupported 'openapi' version)"]}}
+  }
+]

@@ -1,0 +1,32 @@
+{
+  "format_version": "1",
+  "id": "laravel-bug-analyzer",
+  "name": "Laravel Bug Analyzer",
+  "description": "Detects common Laravel bugs and security mistakes in PHP and Blade files: SQL built from variables, unguarded mass assignment, env() outside config, leftover dd()/dump(), POST forms without @csrf, create($request->all()). Use when reviewing a Laravel project.",
+  "version": "1.0.0",
+  "kind": "code",
+  "tools": ["Read", "Bash"],
+  "dependencies": [],
+  "permissions": ["compute", "read-input-files"],
+  "input_schema": {
+    "type": "object",
+    "properties": {"files": {"type": "object", "additionalProperties": {"type": "string"}}},
+    "required": ["files"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "findings": {"type": "array", "items": {"type": "object", "properties": {
+        "file": {"type": "string"}, "line": {"type": "integer"}, "rule": {"type": "string"},
+        "severity": {"type": "string", "enum": ["high", "medium", "low"]}, "message": {"type": "string"}},
+        "required": ["file", "line", "rule", "severity", "message"]}},
+      "count": {"type": "integer"},
+      "by_severity": {"type": "object"}
+    },
+    "required": ["findings", "count", "by_severity"]
+  },
+  "execution": {"runtime": "python3.12", "entrypoint": "scripts/main.py", "timeout_seconds": 10, "memory_mb": 256},
+  "tests": {"framework": "unittest", "path": "tests"},
+  "compatibility": ["claude-code", "codex", "cursor"],
+  "origin": "reference"
+}

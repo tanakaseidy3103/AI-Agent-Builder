@@ -14,7 +14,7 @@ FORMAT_VERSION = "1"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$")
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
-ALLOWED_TOP_DIRS = {"scripts", "tests", "examples", "docs"}
+ALLOWED_TOP_DIRS = {"scripts", "tests", "evals", "examples", "docs"}
 ALLOWED_ROOT_FILES = {"SKILL.md", "manifest.json", "README.md"}
 ALLOWED_EXTENSIONS = {".md", ".json", ".py", ".txt", ".ts", ".tsx", ".js", ".jsx", ".csv", ".yaml", ".yml"}
 MAX_FILE_BYTES = 100_000
@@ -52,6 +52,7 @@ class Manifest(BaseModel):
     execution: ExecutionSpec | None = None
     tests: TestSpec | None = None
     compatibility: list[str] = ["claude-code", "codex", "cursor"]
+    origin: Literal["generated", "reference"] = "generated"  # reference = human-written benchmark Skill
 
     @field_validator("id")
     @classmethod
