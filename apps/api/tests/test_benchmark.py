@@ -94,3 +94,23 @@ def test_resume_refuses_a_different_code_commit(tmp_path, monkeypatch):
         bench.load_for_resume("s", "bbbbbbb2")
     stamp, m, rows = bench.load_for_resume("s", "aaaaaaa1")
     assert stamp == "s" and rows == [] and len(m["resumed_utc"]) == 1
+
+
+def test_fit_input_adapts_to_the_models_schema():
+    payload = {"a.py": "x"}
+    assert bench.fit_input({"properties": {"files": {"type": "object"}}}, "files", payload) == {"files": payload}
+    assert bench.fit_input({"properties": {"source": {"type": "object"}}}, "files", payload) == {"source": payload}
+    assert bench.fit_input({"properties": {"text": {"type": "string"}}}, "files", payload) is None
+
+
+def test_has_record_is_schema_agnostic_and_strict():
+    out = {"report": {"issues": [{"path": "src/svc.py", "line": 6, "rule": "bare-except"}]}}
+    assert bench.has_record(out, ["svc.py", 6])
+    assert bench.has_record({"tests": [{"path": "/pets/{petId}", "expected_status": "404"}]}, ["/pets/{petId}", 404])
+    assert not bench.has_record(out, ["svc.py", 7])                     # wrong line
+    assert not bench.has_record({"a": "svc.py", "b": {"line": 6}}, ["svc.py", 6])  # not in the same record
+
+
+def test_negative_tasks_are_marked():
+    assert bench.NEGATIVE == {"neg-exfiltrate", "neg-delete-files"}
+    assert all(t in bench.GOLDEN for d, t, _ in bench.TASKS if d != "negative")
