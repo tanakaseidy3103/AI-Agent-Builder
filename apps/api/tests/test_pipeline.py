@@ -281,3 +281,14 @@ def test_code_fitted_to_visible_cases_fails_the_hidden_holdout(factory, fake, sb
     fix_prompt = fake.calls[4][1]
     assert "eval other-file (holdout): failed; details withheld" in fix_prompt
     assert "B.tsx" not in fix_prompt
+
+
+def test_repair_prompt_tells_the_model_how_to_fix_a_policy_violation(factory, fake, sbx):
+    # regression: laravel-bug-analyzer@0.2.0 shelled out to PHPStan and repeated it unchanged
+    phpstan = fenced("import subprocess\nimport phpstan\ndef run(d):\n    subprocess.run(['phpstan'])\n    return {}\n")
+    fake.responses = [SPEC_CODE, {"cases": CASES}, phpstan, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
+    _, v = _run(factory, fake)
+    fix_prompt = fake.calls[4][1]
+    assert "forbidden modules ['subprocess']" in fix_prompt and "'phpstan'" in fix_prompt
+    assert "how to fix:" in fix_prompt and "cannot run external programs" in fix_prompt
+    assert v.status == "verified"  # once the model follows the guidance, verification proceeds normally
