@@ -122,9 +122,7 @@ function ChatPanel({ requests, onSubmit, onOpen }: { requests: Request[]; onSubm
         )}
         <ol className="space-y-4" aria-label={t("chat.title")}>
           {requests.map((r) => <Conversation key={r.jobId} req={r} onOpen={onOpen} onRetry={() => start.mutate({ prompt: r.prompt, kind: r.kind })}
-            onRefine={() => { setPrompt(`${r.prompt}
-
-${t("chat.correction")}: `); setKind(r.kind); inputRef.current?.focus(); }} />)}
+            onRefine={() => { setPrompt(`${r.prompt}\n\n${t("chat.correction")}: `); setKind(r.kind); inputRef.current?.focus(); }} />)}
         </ol>
         <form className="space-y-3 border-t border-white/5 pt-4" onSubmit={(e) => { e.preventDefault(); start.mutate({ prompt: prompt.trim(), kind }); }}>
           <label className="block text-xs font-medium text-slate-300" htmlFor="prompt">{t("chat.label")}</label>
