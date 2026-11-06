@@ -1,4 +1,5 @@
 """Generation pipeline with a deterministic fake LLM. Sandbox is faked here; real sandbox in test_evaluation.py."""
+import json
 import pytest
 
 from app.llm import LLMError
@@ -252,3 +253,31 @@ def test_successful_repair_history_shows_progress(factory, fake, sbx):
     with factory() as s:
         hist = s.query(ValidationRun).one().report["repair_history"]
     assert [h["status"] for h in hist] == ["validation_failed", "verified"] and hist[1]["failing"] == []
+
+
+HOLDOUT_CASES = CASES + [{"name": "other-file", "input": {"files": {"B.tsx": "<i onClick={() => x()} />"}},
+                          "expect": {"contains": {"count": 1, "findings": [{"file": "B.tsx"}]}}}]
+
+
+def test_coder_sees_visible_inputs_but_never_expectations_or_the_holdout(factory, fake, sbx):
+    fake.responses = [SPEC_CODE, {"cases": HOLDOUT_CASES}, fenced(CODE_SCRIPT), fenced(CODE_TEST)]
+    job, v = _run(factory, fake)
+    assert v is not None, job.error
+    code_prompt = fake.calls[2][1]
+    assert "App.tsx" in code_prompt and "A.tsx" in code_prompt  # visible example inputs
+    assert "B.tsx" not in code_prompt                            # holdout input hidden
+    assert '"expect"' not in code_prompt and '"contains"' not in code_prompt
+    stored = json.loads(storage.read_package(v.storage_key)["evals/cases.json"])
+    assert stored[-1]["holdout"] is True and v.status == "verified"  # holdout still evaluated, and passes here
+
+
+def test_code_fitted_to_visible_cases_fails_the_hidden_holdout(factory, fake, sbx, monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "max_repair_rounds", 1)
+    fitted = fenced("def run(data):\n    n = 1 if 'App.tsx' in data['files'] else 0\n    return {'findings': [{}] * n, 'count': n}\n")
+    fake.responses = [SPEC_CODE, {"cases": HOLDOUT_CASES}, fitted, fenced(CODE_TEST), fitted]
+    _, v = _run(factory, fake)
+    assert v.status != "verified"
+    fix_prompt = fake.calls[4][1]
+    assert "eval other-file (holdout): failed; details withheld" in fix_prompt
+    assert "B.tsx" not in fix_prompt
