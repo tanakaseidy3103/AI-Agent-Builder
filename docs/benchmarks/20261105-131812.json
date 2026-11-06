@@ -1,0 +1,1212 @@
+{
+  "meta": {
+    "started_utc": "2026-11-05T13:18:13+00:00",
+    "git_commit": "75eb00f5aeacca604cca98ebf0464be7edf0ef34",
+    "ollama_version": "0.40.14",
+    "models": {
+      "llama3.2:3b": {
+        "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+        "parameter_size": "3.2B",
+        "quantization": "Q4_K_M"
+      },
+      "qwen2.5-coder:latest": {
+        "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+        "parameter_size": "7.6B",
+        "quantization": "Q4_K_M"
+      }
+    },
+    "options": {
+      "temperature": 0.2,
+      "seed": "42 + attempt index (0-based)",
+      "num_ctx": 8192,
+      "num_predict": 3072
+    },
+    "llm_timeout_s": 300.0,
+    "max_repair_rounds": 3,
+    "sandbox_image": "python:3.12-slim",
+    "sandbox_image_id": "sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30",
+    "gpu": "NVIDIA GeForce RTX 3050 6GB Laptop GPU, 6144 MiB",
+    "host": "Windows 11 / Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "attempts_per_task": 3,
+    "kind": "code (forced)",
+    "tasks": [
+      {
+        "difficulty": "easy",
+        "id": "project-docs",
+        "prompt": "Create a Skill that generates a README draft from a project's files: count source files per language by extension, list the npm scripts from package.json, and list folders that contain tests."
+      },
+      {
+        "difficulty": "medium",
+        "id": "python-analyzer",
+        "prompt": "Create a Skill that analyzes Python source files and reports bare except clauses, mutable default arguments and unused imports, each with file, line and rule name."
+      },
+      {
+        "difficulty": "medium",
+        "id": "api-test-plan",
+        "prompt": "Create a Skill that takes an OpenAPI 3 JSON document and produces an API test plan: one happy-path test per operation with its expected 2xx status, plus a 404 test for every path with parameters."
+      },
+      {
+        "difficulty": "hard",
+        "id": "react-a11y",
+        "prompt": "Create a Skill that finds accessibility problems in React JSX/TSX files: img without alt, clickable div or span without role or keyboard handler, and anchors without href. Report file, line and rule."
+      },
+      {
+        "difficulty": "hard",
+        "id": "laravel-bugs",
+        "prompt": "Create a Skill that detects Laravel bugs in PHP and Blade files: SQL built from variables in DB::select or whereRaw, protected $guarded = [], env() outside config/, leftover dd(), and POST forms without @csrf."
+      }
+    ]
+  },
+  "runs": [
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "easy",
+      "task": "project-docs",
+      "seconds_total": 79.7,
+      "seconds_llm_stages": 31.8,
+      "seconds_validation_last_round": 1.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "0/5",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "raised KeyError: 'contains'"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/5 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "c12daaf26af60800",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "medium",
+      "task": "python-analyzer",
+      "seconds_total": 64.8,
+      "seconds_llm_stages": 27.9,
+      "seconds_validation_last_round": 1.8,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/4",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "raised AttributeError: module 'ast' has no attribute 'ExceptType'"
+        ],
+        [
+          "raised AttributeError: 'FunctionDef' object has no attribute 'defaults'"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/4 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "b0fb9e6ce534fdad",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "medium",
+      "task": "api-test-plan",
+      "seconds_total": 157.9,
+      "seconds_llm_stages": 73.3,
+      "seconds_validation_last_round": 0.0,
+      "job_status": "completed",
+      "status": "validation_failed",
+      "first_failure": "python.syntax:tests/test_main.py",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 3,
+      "tests": "0/0",
+      "evals": "0/0",
+      "eval_failures": [],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": false,
+          "detail": "14 passed, 2 failed"
+        }
+      ],
+      "code_sha": "efc98bed02d6ed65",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "hard",
+      "task": "react-a11y",
+      "seconds_total": 88.7,
+      "seconds_llm_stages": 35.7,
+      "seconds_validation_last_round": 2.4,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "raised AttributeError: 'str' object has no attribute 'get'"
+        ],
+        [
+          "raised AttributeError: 'str' object has no attribute 'get'"
+        ],
+        [
+          "raised AttributeError: 'str' object has no attribute 'get'"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "05e43cb2d05f4841",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "hard",
+      "task": "laravel-bugs",
+      "seconds_total": 94.3,
+      "seconds_llm_stages": 31.8,
+      "seconds_validation_last_round": 0.1,
+      "job_status": "completed",
+      "status": "validation_failed",
+      "first_failure": "python.syntax:scripts/main.py",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/0",
+      "evals": "0/0",
+      "eval_failures": [],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": false,
+          "detail": "14 passed, 2 failed"
+        }
+      ],
+      "code_sha": "362c3d8722e443a7",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "easy",
+      "task": "project-docs",
+      "seconds_total": 84.9,
+      "seconds_llm_stages": 38.2,
+      "seconds_validation_last_round": 1.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "1/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "1/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "fe23dfcf0ca8c43c",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "medium",
+      "task": "python-analyzer",
+      "seconds_total": 58.7,
+      "seconds_llm_stages": 21.9,
+      "seconds_validation_last_round": 2.2,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "2/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "2/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "d29990965eb5d32e",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "medium",
+      "task": "api-test-plan",
+      "seconds_total": 81.4,
+      "seconds_llm_stages": 28.2,
+      "seconds_validation_last_round": 1.8,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "0/4",
+      "eval_failures": [
+        [
+          "raised JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+        ],
+        [
+          "raised JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+        ],
+        [
+          "raised JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/4 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "bf4d1cf974d081a4",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "hard",
+      "task": "react-a11y",
+      "seconds_total": 47.3,
+      "seconds_llm_stages": 18.8,
+      "seconds_validation_last_round": 0.0,
+      "job_status": "completed",
+      "status": "validation_failed",
+      "first_failure": "python.policy:scripts/main.py",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/0",
+      "evals": "0/0",
+      "eval_failures": [],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": false,
+          "detail": "16 passed, 1 failed"
+        }
+      ],
+      "code_sha": "b907802fa642d647",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "hard",
+      "task": "laravel-bugs",
+      "seconds_total": 101.5,
+      "seconds_llm_stages": 35.3,
+      "seconds_validation_last_round": 2.1,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "0/5",
+      "eval_failures": [
+        [
+          "raised TypeError: expected string or bytes-like object, got 'dict'"
+        ],
+        [
+          "raised TypeError: expected string or bytes-like object, got 'dict'"
+        ],
+        [
+          "raised TypeError: expected string or bytes-like object, got 'dict'"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/5 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "7e6c4a5b5cc6dbbb",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "easy",
+      "task": "project-docs",
+      "seconds_total": 103.8,
+      "seconds_llm_stages": 42.7,
+      "seconds_validation_last_round": 1.8,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "0/4",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/4 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "89c734eb36f889cc",
+      "attempt": 3,
+      "seed": 44
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "medium",
+      "task": "python-analyzer",
+      "seconds_total": 101.0,
+      "seconds_llm_stages": 43.9,
+      "seconds_validation_last_round": 1.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "1/5",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "1/5 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "8276449568f20507",
+      "attempt": 3,
+      "seed": 44
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "medium",
+      "task": "api-test-plan",
+      "seconds_total": 88.0,
+      "seconds_llm_stages": 35.0,
+      "seconds_validation_last_round": 2.2,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "8a06e3da3a709a1a",
+      "attempt": 3,
+      "seed": 44
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "hard",
+      "task": "react-a11y",
+      "seconds_total": 61.2,
+      "seconds_llm_stages": 22.2,
+      "seconds_validation_last_round": 2.0,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "raised AttributeError: module 'ast' has no attribute 'Element'"
+        ],
+        [
+          "raised AttributeError: module 'ast' has no attribute 'Element'"
+        ],
+        [
+          "raised AttributeError: module 'ast' has no attribute 'Element'"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "6bfc8ed52dfbcc8e",
+      "attempt": 3,
+      "seed": 44
+    },
+    {
+      "model": "ollama:llama3.2:3b",
+      "difficulty": "hard",
+      "task": "laravel-bugs",
+      "seconds_total": 112.6,
+      "seconds_llm_stages": 34.3,
+      "seconds_validation_last_round": 2.7,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "2/3",
+      "evals": "0/5",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "2/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/5 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "002ae8c624815b79",
+      "attempt": 3,
+      "seed": 44
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "easy",
+      "task": "project-docs",
+      "seconds_total": 185.7,
+      "seconds_llm_stages": 75.8,
+      "seconds_validation_last_round": 2.2,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "3/5",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "3/5 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "211c9a1a56dcf8ec",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "medium",
+      "task": "python-analyzer",
+      "seconds_total": 140.5,
+      "seconds_llm_stages": 56.6,
+      "seconds_validation_last_round": 1.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/3",
+      "evals": "1/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "1/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "a00d90512f9a0d63",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "medium",
+      "task": "api-test-plan",
+      "seconds_total": 185.8,
+      "seconds_llm_stages": 78.8,
+      "seconds_validation_last_round": 1.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "eval_cases",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "3/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "raised AttributeError: 'list' object has no attribute 'get'"
+        ],
+        [
+          "raised AttributeError: 'list' object has no attribute 'get'"
+        ],
+        [
+          "raised AttributeError: 'list' object has no attribute 'get'"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": true,
+          "detail": "3/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "c82fb5f3b48ba8d5",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "hard",
+      "task": "react-a11y",
+      "seconds_total": 151.9,
+      "seconds_llm_stages": 61.3,
+      "seconds_validation_last_round": 2.3,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "1/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "1/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "211abbd84248ff81",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "hard",
+      "task": "laravel-bugs",
+      "seconds_total": 234.1,
+      "seconds_llm_stages": 91.2,
+      "seconds_validation_last_round": 1.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/5",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "0/5 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "83c12ada87282bfd",
+      "attempt": 1,
+      "seed": 42
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "easy",
+      "task": "project-docs",
+      "seconds_total": 183.5,
+      "seconds_llm_stages": 84.9,
+      "seconds_validation_last_round": 2.0,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "1/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "1/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "ea9f3dd66ebd0cc5",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "medium",
+      "task": "python-analyzer",
+      "seconds_total": 145.7,
+      "seconds_llm_stages": 64.3,
+      "seconds_validation_last_round": 2.0,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "1/3",
+      "evals": "1/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "1/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "1/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "7bf75f36a2525ef1",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "medium",
+      "task": "api-test-plan",
+      "seconds_total": 309.2,
+      "seconds_llm_stages": 132.3,
+      "seconds_validation_last_round": 2.2,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "1/3",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "raised AttributeError: 'list' object has no attribute 'get'"
+        ],
+        [
+          "raised AttributeError: 'list' object has no attribute 'get'"
+        ],
+        [
+          "raised AttributeError: 'list' object has no attribute 'get'"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "1/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "bf8c3a8c2a5b8dc9",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "hard",
+      "task": "react-a11y",
+      "seconds_total": 164.2,
+      "seconds_llm_stages": 68.6,
+      "seconds_validation_last_round": 2.1,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "eval_cases",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "3/3",
+      "evals": "1/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": true,
+          "detail": "3/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "1/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "21ea32ab2f71a7c1",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "hard",
+      "task": "laravel-bugs",
+      "seconds_total": 39818.7,
+      "seconds_llm_stages": 39650.4,
+      "seconds_validation_last_round": 0.1,
+      "job_status": "completed",
+      "status": "validation_failed",
+      "first_failure": "python.syntax:scripts/main.py",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "0/0",
+      "evals": "0/0",
+      "eval_failures": [],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": false,
+          "detail": "14 passed, 2 failed"
+        }
+      ],
+      "code_sha": "6b489a00dad0bb26",
+      "attempt": 2,
+      "seed": 43
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "easy",
+      "task": "project-docs",
+      "seconds_total": 244.6,
+      "seconds_llm_stages": 99.4,
+      "seconds_validation_last_round": 3.9,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "2/4",
+      "evals": "0/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "2/4 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "0/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "090781f82e380353",
+      "attempt": 3,
+      "seed": 44
+    },
+    {
+      "model": "ollama:qwen2.5-coder:latest",
+      "difficulty": "medium",
+      "task": "python-analyzer",
+      "seconds_total": 158.6,
+      "seconds_llm_stages": 63.8,
+      "seconds_validation_last_round": 3.5,
+      "job_status": "completed",
+      "status": "validated",
+      "first_failure": "unit_tests",
+      "repair_rounds": 3,
+      "tests_rewritten_in_repair": 0,
+      "tests": "1/3",
+      "evals": "1/3",
+      "eval_failures": [
+        [
+          "output does not contain expect.contains"
+        ],
+        [
+          "output does not contain expect.contains"
+        ]
+      ],
+      "criteria": [
+        {
+          "id": "static",
+          "passed": true,
+          "detail": "17 passed, 0 failed"
+        },
+        {
+          "id": "unit_tests",
+          "passed": false,
+          "detail": "1/3 passed (need ≥3, all passing)"
+        },
+        {
+          "id": "eval_cases",
+          "passed": false,
+          "detail": "1/3 passed (schema, determinism, expectations)"
+        }
+      ],
+      "code_sha": "8a0ecfd476c1beda",
+      "attempt": 3,
+      "seed": 44
+    }
+  ]
+}
