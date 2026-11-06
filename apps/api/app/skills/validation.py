@@ -275,7 +275,9 @@ HINTS = {
     "manifest.compatibility": "Use only claude-code, codex, cursor.",
     "python.syntax": "The file does not parse. Regenerate or fix the reported line.",
     "python.api": "A referenced stdlib attribute does not exist in Python 3.12 (hallucinated API); use a real one.",
-    "python.policy": "Remove forbidden modules/calls (subprocess, socket, eval, os.system, writes) or non-stdlib imports.",
+    "python.policy": ("Remove forbidden modules/calls (subprocess, socket, eval, os.system, writes) and non-stdlib "
+                      "imports. The Skill cannot run external programs or linters (e.g. phpstan, eslint): implement the "
+                      "analysis in pure Python by reading the source text with re/ast/json."),
     "code.entrypoint": "scripts/main.py must define a top-level def run(data: dict) -> dict.",
     "code.tests": f"Add tests/test_main.py with ≥{MIN_TESTS} unittest methods, each asserting something.",
     "code.evals": f"Add {EVALS_PATH}: ≥{MIN_EVAL_CASES} cases with name, input matching input_schema, optional expect.",

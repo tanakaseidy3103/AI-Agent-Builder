@@ -129,7 +129,10 @@ def _clip(value: object, limit: int = 600) -> str:
 
 def failures_text(report: dict) -> str:
     """Human/LLM-readable list of what failed, used by the repair loop and the UI."""
-    lines = [f"- {c['id']}: {c['message']}" for c in report["static"]["checks"] if c["status"] == "fail"]
+    # each static failure carries its how-to-fix hint: laravel-bug-analyzer@0.2.0 repeated the same subprocess
+    # call because the repair prompt only said what was wrong, not what to do instead
+    lines = [f"- {c['id']}: {c['message']}" + (f"\n  how to fix: {c['hint']}" if c.get("hint") else "")
+             for c in report["static"]["checks"] if c["status"] == "fail"]
     lines += [f"- test {t['name']} {t['status']}:\n{t['detail'][-800:]}" for t in report["tests"] if t["status"] != "pass"]
     for e in report["evals"]:
         if e["status"] == "pass":
