@@ -217,3 +217,13 @@ def test_revalidation_during_sandbox_outage_keeps_verified(client, code_version,
                                        ("127.0.0.1.evil.example", 400)])
 def test_dns_rebinding_hosts_are_rejected(client, host, code):
     assert client.get("/studio/skills", headers={"Host": host}).status_code == code
+
+
+def test_concurrent_generations_are_limited(client, factory, monkeypatch):
+    from app.models import GenerationJob
+    monkeypatch.setattr(settings, "max_concurrent_generations", 2)
+    with factory() as s:
+        s.add_all([GenerationJob(prompt="x" * 12, status="generating"), GenerationJob(prompt="y" * 12, status="draft")])
+        s.commit()
+    r = client.post("/studio/skills/generate", json={"prompt": "Analyze React projects for performance"})
+    assert r.status_code == 429 and r.headers["retry-after"] == "30"

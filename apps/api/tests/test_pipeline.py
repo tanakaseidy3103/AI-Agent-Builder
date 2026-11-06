@@ -325,3 +325,15 @@ def test_generated_readme_explains_install_run_and_shows_a_visible_example(facto
     assert "## Install" in readme and "~/.claude/skills/" in readme
     assert "python scripts/cli.py --dir ./my-project" in readme
     assert "App.tsx" in readme and "B.tsx" not in readme  # example from a visible case, never the holdout
+
+
+def test_jobs_left_running_by_a_restart_are_marked_failed(factory):
+    from app.skills.pipeline import fail_interrupted_jobs
+    with factory() as s:
+        s.add_all([GenerationJob(prompt="a", status="generating"), GenerationJob(prompt="b", status="draft"),
+                   GenerationJob(prompt="c", status="completed")])
+        s.commit()
+        assert fail_interrupted_jobs(s) == 2
+        statuses = sorted(j.status for j in s.query(GenerationJob))
+        assert statuses == ["completed", "failed", "failed"]
+        assert all("interrupted" in j.error for j in s.query(GenerationJob).filter_by(status="failed"))
