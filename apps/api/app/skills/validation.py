@@ -93,6 +93,28 @@ def _schema_ok(schema: object) -> bool:
     return isinstance(props, dict) and isinstance(req, list) and all(r in props for r in req)
 
 
+# SKILL.md and docs are executed as instructions by the user's coding agent OUTSIDE our sandbox, so model-written text
+# must not tell that agent to run destructive or remote code, exfiltrate secrets, or override its instructions.
+UNSAFE_TEXT = [
+    (re.compile(r"\brm\s+-[a-z]*(rf|fr)\b", re.I), "recursive forced delete (rm -rf)"),
+    (re.compile(r"\b(curl|wget)\b[^\n|]*\|\s*(ba|z)?sh\b", re.I), "pipes a download into a shell"),
+    (re.compile(r"\b(iex|invoke-expression)\b|downloadstring", re.I), "PowerShell remote code execution"),
+    (re.compile(r"remove-item\b[^\n]*-recurse[^\n]*-force|\bdel\s+/s\s+/q\b|\bformat\s+[a-z]:", re.I), "recursive forced delete (Windows)"),
+    (re.compile(r"\bsudo\b|chmod\s+777", re.I), "privilege escalation or world-writable permissions"),
+    (re.compile(r"base64\s+(-d|--decode)[^\n]*\|", re.I), "decodes and pipes hidden content"),
+    (re.compile(r"\b(curl|wget|invoke-webrequest|iwr)\b[^\n]*(\.env\b|id_rsa|\.ssh|api[_-]?key|token|password)", re.I), "sends secrets over the network"),
+    (re.compile(r"ignore\s+(all\s+|any\s+)?(previous|prior|above|earlier)\s+instructions", re.I), "instruction override (prompt injection)"),
+]
+
+
+def unsafe_instructions(files: dict[str, str]) -> list[str]:
+    found = []
+    for path, text in files.items():
+        if path.endswith(".md"):
+            found += [f"{path}: {why}" for rx, why in UNSAFE_TEXT if rx.search(text)]
+    return sorted(set(found))
+
+
 def validate_package(files: dict[str, str]) -> tuple[list[Check], Manifest | None]:
     checks: list[Check] = []
     add = lambda i, s, m: checks.append(Check(i, s, m))  # noqa: E731
@@ -121,6 +143,10 @@ def validate_package(files: dict[str, str]) -> tuple[list[Check], Manifest | Non
     except (json.JSONDecodeError, ValidationError) as e:
         add("manifest.schema", "fail", str(e)[:500])
         return checks, None
+
+    unsafe = unsafe_instructions(files)
+    add("skill_md.safety", "fail" if unsafe else "pass",
+        "; ".join(unsafe)[:400] or "no dangerous commands or instruction overrides in the Markdown files")
 
     fm = parse_frontmatter(files["SKILL.md"])
     if not fm.get("name") or not fm.get("description"):
@@ -268,6 +294,8 @@ HINTS = {
     "structure.paths": "Use relative paths inside scripts/, tests/, evals/, docs/ or examples/ with allowed extensions.",
     "structure.required": "Every package needs SKILL.md and manifest.json.",
     "manifest.schema": "Fix manifest.json fields (slug id, semver version, kind instructions|code).",
+    "skill_md.safety": ("Remove commands that delete files, run downloaded code, escalate privileges or send secrets, "
+                        "and any text telling the agent to ignore its instructions."),
     "skill_md.frontmatter": "SKILL.md must start with ---/name/description--- and name must equal manifest id.",
     "manifest.io_schemas": "input_schema and output_schema must be {type: object, properties: {...}} with required ⊆ properties.",
     "manifest.permissions": "Remove network/filesystem-write; the sandbox never grants them.",

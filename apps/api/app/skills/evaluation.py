@@ -43,7 +43,7 @@ def judge_case(case: dict, rec: dict, output_schema: dict) -> dict:
 
 # First failing static check prefix -> category. Order matters: earliest pipeline problem wins.
 STATIC_CATEGORIES = [("python.syntax", "syntax"), ("python.policy", "policy"), ("python.api", "hallucinated_api"),
-                     ("code.entrypoint", "entrypoint"), ("code.tests", "test_definition"), ("code.evals", "spec_error"),
+                     ("skill_md.safety", "unsafe_instructions"), ("code.entrypoint", "entrypoint"), ("code.tests", "test_definition"), ("code.evals", "spec_error"),
                      ("manifest.", "spec_error"), ("skill_md.", "spec_error"), ("structure.", "spec_error")]
 
 

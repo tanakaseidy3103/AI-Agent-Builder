@@ -15,7 +15,7 @@ export interface EvalResult {
   input?: unknown; expected?: unknown; actual?: unknown;
 }
 export type FailureCategory =
-  | "none" | "syntax" | "policy" | "hallucinated_api" | "entrypoint" | "test_definition" | "spec_error"
+  | "none" | "syntax" | "policy" | "hallucinated_api" | "unsafe_instructions" | "entrypoint" | "test_definition" | "spec_error"
   | "test_failure" | "eval_failure" | "execution_limit" | "infra" | "not_executable";
 export interface Report {
   status: VersionStatus; duration_ms: number;
