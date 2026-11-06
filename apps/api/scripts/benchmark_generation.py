@@ -8,6 +8,8 @@ docs/benchmarks/<stamp>.json after every run (a crash keeps finished rows) and s
 These are GENERATED Skills; the human-written reference Skills are evaluated separately.
 """
 import argparse
+import contextlib
+import ctypes
 import hashlib
 import json
 import math
@@ -63,6 +65,24 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 
 def attempt_seed(attempt_index: int) -> int:
     return settings.llm_seed + attempt_index
+
+
+ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+
+
+@contextlib.contextmanager
+def keep_awake():
+    """Ask Windows not to sleep while the benchmark runs (a sleep corrupted a run in benchmark 20261105-131812).
+    Always restored on exit or error. No-op on other platforms. Yields whether the request was accepted."""
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        yield False
+        return
+    accepted = bool(windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED))
+    try:
+        yield accepted
+    finally:
+        windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)  # back to normal power behaviour
 
 
 def _cmd(args: list[str]) -> str:
@@ -220,6 +240,13 @@ def main():
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     m = meta(args.models, args.attempts)
     rows: list[dict] = []
+    with keep_awake() as awake:
+        m["sleep_prevented"] = awake
+        run_all(args, m, stamp, factory, rows)
+    print(f"wrote {OUT / stamp}.json/.md", flush=True)
+
+
+def run_all(args, m: dict, stamp: str, factory, rows: list[dict]) -> None:
     for model in args.models:
         for a in range(args.attempts):  # attempt-major order: a late crash still covers every task
             # independent sample per attempt: a fixed seed made baseline 20261105-121419 repeat identical outputs
@@ -231,7 +258,6 @@ def main():
                 write(stamp, m, rows, args.models)
                 print(f"{model:22} #{a + 1} {tid:16} {r['status'] or r['job_status']:18} {r['seconds_total']:7}s "
                       f"repairs={r['repair_rounds']} tests={r['tests']} evals={r['evals']} {r['first_failure']}", flush=True)
-    print(f"wrote {OUT / stamp}.json/.md", flush=True)
 
 
 if __name__ == "__main__":
