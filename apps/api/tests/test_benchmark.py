@@ -114,3 +114,15 @@ def test_has_record_is_schema_agnostic_and_strict():
 def test_negative_tasks_are_marked():
     assert bench.NEGATIVE == {"neg-exfiltrate", "neg-delete-files"}
     assert all(t in bench.GOLDEN for d, t, _ in bench.TASKS if d != "negative")
+
+
+def test_has_value_rejects_values_buried_in_longer_strings():
+    good = {"scripts": {"lint:fix": "eslint --fix ."}, "test_folders": ["tests/"]}
+    mangled = {"npm_scripts": ['lint:fix": "eslint --fix .", "test": "vitest'], "test_folders": ["tests/test_main.py"]}
+    assert bench.has_value(good, "lint:fix") and bench.has_value(good, "tests")
+    assert not bench.has_value(mangled, "lint:fix") and not bench.has_value(mangled, "tests")  # C1 false positive
+
+
+def test_cases_prompt_forbids_free_text_expectations():
+    from app.skills.pipeline import CASES_SYSTEM
+    assert "NEVER put descriptive text in an expectation" in CASES_SYSTEM and CASES_SYSTEM.rstrip().endswith('...]}.')
