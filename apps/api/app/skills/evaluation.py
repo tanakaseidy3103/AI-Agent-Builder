@@ -40,6 +40,35 @@ def judge_case(case: dict, rec: dict, output_schema: dict) -> dict:
             "duration_ms": rec.get("duration_ms", 0), "stdout": rec.get("stdout", ""), "trace": rec.get("trace")}
 
 
+# First failing static check prefix -> category. Order matters: earliest pipeline problem wins.
+STATIC_CATEGORIES = [("python.syntax", "syntax"), ("python.policy", "policy"), ("python.api", "hallucinated_api"),
+                     ("code.entrypoint", "entrypoint"), ("code.tests", "test_definition"), ("code.evals", "spec_error"),
+                     ("manifest.", "spec_error"), ("skill_md.", "spec_error"), ("structure.", "spec_error")]
+
+
+def failure_category(report: dict) -> str:
+    """One category per report, so benchmark rows and the UI can tell failure kinds apart."""
+    if report["status"] == "verified":
+        return "none"
+    failed = [c["id"] for c in report["static"]["checks"] if c["status"] == "fail"]
+    for prefix, cat in STATIC_CATEGORIES:
+        if any(f.startswith(prefix) for f in failed):
+            return cat
+    sbx = report["sandbox"]
+    if sbx.get("status") == "unavailable":
+        return "infra"
+    if sbx.get("status") == "error":
+        err = str(sbx.get("error") or "")
+        # generated code hitting the sandbox's time/memory limit is a code defect, not an infrastructure fault
+        return "execution_limit" if ("timeout" in err or "memory" in err) else "infra"
+    if not report["criteria"][1:]:
+        return "not_executable"  # instruction-only: validated is its ceiling
+    crit = {c["id"]: c["passed"] for c in report["criteria"]}
+    if not crit.get("unit_tests", True):
+        return "test_failure"
+    return "eval_failure"
+
+
 def full_validation(files: dict[str, str], model: str | None = None) -> tuple[str, dict]:
     t0 = time.monotonic()
     checks, manifest = validate_package(files)
@@ -88,6 +117,7 @@ def full_validation(files: dict[str, str], model: str | None = None) -> tuple[st
     }
     report["duration_ms"] = int((time.monotonic() - t0) * 1000)
     report["status"] = status
+    report["failure_category"] = failure_category(report)
     return status, report
 
 
