@@ -59,3 +59,21 @@ def test_keep_awake_is_noop_without_windll(monkeypatch):
     monkeypatch.delattr(bench.ctypes, "windll", raising=False)
     with bench.keep_awake() as accepted:
         assert accepted is False
+
+
+def test_suspend_watch_detects_gap_and_attributes_it_to_the_run():
+    t = [1000.0]
+    w = bench.SuspendWatch(tick=1.0, threshold=30.0, clock=lambda: t[0])
+    for now in (1001.0, 1002.0, 40820.0, 40821.0):  # 11 h jump, like the 23:12 -> 10:10 sleep
+        w.observe(now)
+    assert len(w.gaps) == 1 and round(w.gaps[0][1]) == 39818
+    assert w.suspended_between(1000.0, 40821.0) > 39000
+    assert w.suspended_between(40820.5, 40900.0) == 0  # a later run is unaffected
+
+
+def test_suspend_watch_ignores_normal_jitter():
+    t = [0.0]
+    w = bench.SuspendWatch(tick=1.0, threshold=30.0, clock=lambda: t[0])
+    for now in (1.0, 2.5, 9.0, 12.0):  # slow ticks under load are not a suspend
+        w.observe(now)
+    assert w.gaps == []
