@@ -121,7 +121,10 @@ function ChatPanel({ requests, onSubmit, onOpen }: { requests: Request[]; onSubm
           </div>
         )}
         <ol className="space-y-4" aria-label={t("chat.title")}>
-          {requests.map((r) => <Conversation key={r.jobId} req={r} onOpen={onOpen} onRetry={() => start.mutate({ prompt: r.prompt, kind: r.kind })} />)}
+          {requests.map((r) => <Conversation key={r.jobId} req={r} onOpen={onOpen} onRetry={() => start.mutate({ prompt: r.prompt, kind: r.kind })}
+            onRefine={() => { setPrompt(`${r.prompt}
+
+${t("chat.correction")}: `); setKind(r.kind); inputRef.current?.focus(); }} />)}
         </ol>
         <form className="space-y-3 border-t border-white/5 pt-4" onSubmit={(e) => { e.preventDefault(); start.mutate({ prompt: prompt.trim(), kind }); }}>
           <label className="block text-xs font-medium text-slate-300" htmlFor="prompt">{t("chat.label")}</label>
@@ -164,7 +167,7 @@ function Bubble({ who, children }: { who: "you" | "studio"; children: React.Reac
   );
 }
 
-function Conversation({ req, onOpen, onRetry }: { req: Request; onOpen: (id: string) => void; onRetry: () => void }) {
+function Conversation({ req, onOpen, onRetry, onRefine }: { req: Request; onOpen: (id: string) => void; onRetry: () => void; onRefine: () => void }) {
   const t = useT();
   const job = useJob(req.jobId);
   const j = job.data;
@@ -205,6 +208,7 @@ function Conversation({ req, onOpen, onRetry }: { req: Request; onOpen: (id: str
             <div className="flex gap-3">
               <button type="button" className={primaryBtn} onClick={() => onOpen(v.id)}>{t("chat.openResult")}</button>
               {v.status !== "verified" && <button type="button" className="text-xs text-blue-brand underline" onClick={onRetry}>{t("chat.retry")}</button>}
+              <button type="button" className="text-xs text-blue-brand underline" onClick={onRefine}>{t("chat.refine")}</button>
             </div>
           </div>
         )}
