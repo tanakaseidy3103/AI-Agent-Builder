@@ -32,3 +32,30 @@ def test_wilson_interval_matches_known_values():
     assert lo == 0.0 and round(hi, 3) == 0.434
     lo, hi = bench.wilson(5, 10)
     assert (round(lo, 3), round(hi, 3)) == (0.237, 0.763)
+
+
+class _FakeKernel:
+    def __init__(self):
+        self.calls = []
+
+    def SetThreadExecutionState(self, flags):  # noqa: N802 (Win32 name)
+        self.calls.append(flags)
+        return 1
+
+
+def test_keep_awake_requests_and_always_restores(monkeypatch):
+    import pytest
+    from types import SimpleNamespace
+    k = _FakeKernel()
+    monkeypatch.setattr(bench.ctypes, "windll", SimpleNamespace(kernel32=k), raising=False)
+    with pytest.raises(RuntimeError):
+        with bench.keep_awake() as accepted:
+            assert accepted is True
+            raise RuntimeError("benchmark crashed")
+    assert k.calls == [bench.ES_CONTINUOUS | bench.ES_SYSTEM_REQUIRED, bench.ES_CONTINUOUS]
+
+
+def test_keep_awake_is_noop_without_windll(monkeypatch):
+    monkeypatch.delattr(bench.ctypes, "windll", raising=False)
+    with bench.keep_awake() as accepted:
+        assert accepted is False
