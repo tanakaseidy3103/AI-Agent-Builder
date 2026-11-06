@@ -17,6 +17,7 @@ import platform
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,6 +69,36 @@ def attempt_seed(attempt_index: int) -> int:
 
 
 ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+
+
+class SuspendWatch:
+    """Detects host suspend: a 1 s heartbeat (wall clock) that resumes far later than expected means the machine
+    slept. Runs overlapping a gap get timing_valid=False; their statuses are still real, only durations are not."""
+
+    def __init__(self, tick: float = 1.0, threshold: float = 30.0, clock=time.time):
+        self.tick, self.threshold, self.clock = tick, threshold, clock
+        self.gaps: list[tuple[float, float]] = []  # (wall time before the gap, gap seconds)
+        self._last = clock()
+        self._stop = threading.Event()
+
+    def observe(self, now: float) -> None:
+        gap = now - self._last
+        if gap - self.tick > self.threshold:
+            self.gaps.append((self._last, gap))
+        self._last = now
+
+    def suspended_between(self, t0: float, t1: float) -> float:
+        return sum(g for start, g in self.gaps if t0 <= start <= t1)
+
+    def __enter__(self):
+        def loop():
+            while not self._stop.wait(self.tick):
+                self.observe(self.clock())
+        threading.Thread(target=loop, daemon=True).start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
 
 
 @contextlib.contextmanager
@@ -206,7 +237,7 @@ def write(stamp: str, m: dict, rows: list[dict], models_: list[str]) -> None:
         ind = independent(rs)
         k = sum(r["status"] == "verified" for r in ind)
         lo, hi = wilson(k, len(ind))
-        secs = sorted(r["seconds_total"] for r in rs)
+        secs = sorted(r["seconds_total"] for r in rs if r.get("timing_valid", True)) or [None]
         cnt = lambda st: sum(r["status"] == st for r in rs)  # noqa: E731
         L.append(f"| {model} | {len(rs)} | {len(ind)} | {sum(r['status'] == 'verified' for r in rs)} | {cnt('validated')} | "
                  f"{cnt('validation_failed')} | {sum(r['job_status'] == 'failed' for r in rs)} | "
@@ -240,20 +271,23 @@ def main():
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     m = meta(args.models, args.attempts)
     rows: list[dict] = []
-    with keep_awake() as awake:
+    with keep_awake() as awake, SuspendWatch() as watch:
         m["sleep_prevented"] = awake
-        run_all(args, m, stamp, factory, rows)
+        run_all(args, m, stamp, factory, rows, watch)
     print(f"wrote {OUT / stamp}.json/.md", flush=True)
 
 
-def run_all(args, m: dict, stamp: str, factory, rows: list[dict]) -> None:
+def run_all(args, m: dict, stamp: str, factory, rows: list[dict], watch: SuspendWatch) -> None:
     for model in args.models:
         for a in range(args.attempts):  # attempt-major order: a late crash still covers every task
             # independent sample per attempt: a fixed seed made baseline 20261105-121419 repeat identical outputs
             provider = OllamaProvider(settings.ollama_base_url, model, seed=attempt_seed(a))
             for d, tid, prompt in TASKS:
+                t0 = time.time()
                 r = one(factory, provider, d, tid, prompt)
                 r["attempt"], r["seed"] = a + 1, provider.options["seed"]
+                r["host_suspended_s"] = round(watch.suspended_between(t0, time.time()), 1)
+                r["timing_valid"] = r["host_suspended_s"] == 0
                 rows.append(r)
                 write(stamp, m, rows, args.models)
                 print(f"{model:22} #{a + 1} {tid:16} {r['status'] or r['job_status']:18} {r['seconds_total']:7}s "
