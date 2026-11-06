@@ -103,7 +103,7 @@ def test_llm_unavailable_fails_honestly(factory, fake):
 
 def test_bad_code_is_repaired_with_real_failure_feedback(factory, fake, sbx):
     bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
-    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
+    fake.responses = [SPEC_CODE, {"cases": CASES}, bad, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
     job, v = _run(factory, fake)
     assert v.status == "verified"
     fix_prompt = fake.calls[4][1]
@@ -117,7 +117,7 @@ def test_repair_budget_is_bounded_and_failure_is_kept(factory, fake, sbx, monkey
     monkeypatch.setattr(settings, "max_repair_rounds", 2)
     # a different failure each round, so the no-progress stop does not trigger and the budget is what ends the loop
     bad = [fenced(f"import {mod}\ndef run(d):\n    return {{}}\n") for mod in ("subprocess", "socket", "ctypes")]
-    fake.responses = [SPEC_CODE, bad[0], {"cases": CASES}, fenced(CODE_TEST), bad[1] + fenced(CODE_TEST), bad[2] + fenced(CODE_TEST)]
+    fake.responses = [SPEC_CODE, {"cases": CASES}, bad[0], fenced(CODE_TEST), bad[1] + fenced(CODE_TEST), bad[2] + fenced(CODE_TEST)]
     job, v = _run(factory, fake)
     assert job.status == "completed"
     assert v.status == "validation_failed"  # stored for inspection, never promoted
@@ -139,7 +139,7 @@ def test_sandbox_test_failure_traceback_reaches_the_model(factory, fake, monkeyp
 
 
 def test_unrepairable_manifest_problem_stops_without_wasting_calls(factory, fake, sbx):
-    fake.responses = [SPEC_CODE | {"external_services": ["GitHub API"]}, fenced(CODE_SCRIPT), {"cases": CASES}, fenced(CODE_TEST)]
+    fake.responses = [SPEC_CODE | {"external_services": ["GitHub API"]}, {"cases": CASES}, fenced(CODE_SCRIPT), fenced(CODE_TEST)]
     job, v = _run(factory, fake)
     assert v.status == "validation_failed"
     assert len(fake.calls) == 4  # no repair attempted: network permission can't be fixed by code
@@ -192,7 +192,7 @@ def test_repair_cannot_replace_failing_assertions_with_trivial_tests(factory, fa
 
 def test_generated_eval_cases_without_expect_fail_and_are_not_repaired(factory, fake, sbx):
     no_expect = [{"name": c["name"], "input": c["input"]} for c in CASES]
-    fake.responses = [SPEC_CODE, fenced(CODE_SCRIPT), {"cases": no_expect}, fenced(CODE_TEST)]
+    fake.responses = [SPEC_CODE, {"cases": no_expect}, fenced(CODE_SCRIPT), fenced(CODE_TEST)]
     job, v = _run(factory, fake)
     assert v.status == "validation_failed"
     assert len(fake.calls) == 4  # code.evals is unrepairable by the code-fix prompt
@@ -215,14 +215,14 @@ def test_eval_case_schema_embeds_the_skill_input_schema(factory, fake, sbx):
     _run(factory, fake)
     cases = fake.schemas[1]["properties"]["cases"]  # schemas[0] is the spec
     assert cases["items"]["properties"]["input"] == SPEC_CODE["input_schema"]
-    assert cases["minItems"] == 2 and "expect" in cases["items"]["required"]
+    assert cases["minItems"] == 3 and "expect" in cases["items"]["required"]  # 2 required + 1 holdout
 
 
 def test_failed_eval_feedback_shows_input_expected_and_actual(factory, fake, sbx, monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "max_repair_rounds", 1)
     wrong = [{**CASES[0], "expect": {"contains": {"count": 5}}}, CASES[1]]
-    fake.responses = [SPEC_CODE, fenced(CODE_SCRIPT), {"cases": wrong}, fenced(CODE_TEST), fenced(CODE_SCRIPT)]
+    fake.responses = [SPEC_CODE, {"cases": wrong}, fenced(CODE_SCRIPT), fenced(CODE_TEST), fenced(CODE_SCRIPT)]
     _, v = _run(factory, fake)
     assert v.status == "validated"  # a wrong expectation is never "repaired" into verified
     fix_prompt = fake.calls[4][1]
@@ -234,7 +234,7 @@ def test_failed_eval_feedback_shows_input_expected_and_actual(factory, fake, sbx
 def test_identical_failures_stop_the_repair_loop_and_history_is_recorded(factory, fake, sbx):
     bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
     # budget allows 3 repairs, but round 2 fails exactly like round 1 -> stop after one repair
-    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), bad + fenced(CODE_TEST)] + [bad] * 5
+    fake.responses = [SPEC_CODE, {"cases": CASES}, bad, fenced(CODE_TEST), bad + fenced(CODE_TEST)] + [bad] * 5
     _, v = _run(factory, fake)
     assert v.status == "validation_failed"
     assert len(fake.calls) == 5  # spec, code, cases, tests, one repair
@@ -247,7 +247,7 @@ def test_identical_failures_stop_the_repair_loop_and_history_is_recorded(factory
 
 def test_successful_repair_history_shows_progress(factory, fake, sbx):
     bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
-    fake.responses = [SPEC_CODE, bad, {"cases": CASES}, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
+    fake.responses = [SPEC_CODE, {"cases": CASES}, bad, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
     _, v = _run(factory, fake)
     with factory() as s:
         hist = s.query(ValidationRun).one().report["repair_history"]

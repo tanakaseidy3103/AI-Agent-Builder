@@ -62,7 +62,7 @@ def cases_schema(input_schema: dict) -> dict:
     cannot emit inputs of the wrong shape (benchmark 20261105-121419: 10/15 llama failures were e.g. files as a list)."""
     return {
         "type": "object",
-        "properties": {"cases": {"type": "array", "minItems": MIN_EVAL_CASES, "items": {
+        "properties": {"cases": {"type": "array", "minItems": MIN_EVAL_CASES + 1, "items": {
             "type": "object", "properties": {"name": {"type": "string"}, "input": input_schema,
                                              "expect": {"type": "object", "properties": {"contains": {"type": "object"}},
                                                         "required": ["contains"]}},
@@ -265,13 +265,19 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
     cases: list = []
     t.start("generate_files")
     if m.kind == "code":
-        blocks = extract_blocks(provider.complete(CODE_SYSTEM, ctx))
-        code = blocks[0] if blocks else ""
+        # cases first, from the spec only; the code model then sees example INPUTS (never expectations)
         try:
             cases = provider.complete_json(CASES_SYSTEM, ctx, cases_schema(m.input_schema)).get("cases", [])
         except LLMError as e:
             cases = []  # validation will report missing eval cases; keep the honest failure visible
             t._set("generate_files", detail=f"eval cases not generated: {e}")
+        if len(cases) > MIN_EVAL_CASES:
+            cases[-1]["holdout"] = True  # never shown to the model: catches code special-cased to visible cases
+        examples = [c["input"] for c in cases if isinstance(c, dict) and not c.get("holdout") and "input" in c]
+        code_ctx = ctx + (f"\nExample inputs your run() must handle:\n{json.dumps(examples, ensure_ascii=False)[:3000]}"
+                          if examples else "")
+        blocks = extract_blocks(provider.complete(CODE_SYSTEM, code_ctx))
+        code = blocks[0] if blocks else ""
     files = render_files(m, instructions, code, "", None, cases if m.kind == "code" else None)
     t.done("generate_files", detail=f"{len(files)} files" + (f"; {len(cases)} eval cases" if m.kind == "code" else ""))
 

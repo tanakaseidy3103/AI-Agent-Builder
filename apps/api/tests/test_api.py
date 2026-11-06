@@ -108,7 +108,7 @@ def test_export_installs_into_fake_home_and_runs_cli(client, code_version, tmp_p
 
 def test_export_blocked_for_unvalidated(client, fake, sbx):
     bad = fenced("import socket\ndef run(d):\n    return {}\n")
-    vid = _generate(client, fake, [SPEC_CODE, bad, {"cases": []}, fenced(CODE_TEST)] + [bad + fenced(CODE_TEST)] * 3)
+    vid = _generate(client, fake, [SPEC_CODE, {"cases": []}, bad, fenced(CODE_TEST)] + [bad + fenced(CODE_TEST)] * 3)
     assert client.get(f"/studio/versions/{vid}").json()["status"] == "validation_failed"
     assert client.get(f"/studio/versions/{vid}/export/claude-code").status_code == 409
 

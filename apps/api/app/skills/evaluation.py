@@ -37,7 +37,8 @@ def judge_case(case: dict, rec: dict, output_schema: dict) -> dict:
             reasons.append("output does not contain expect.contains")
     return {"name": case.get("name"), "input": case.get("input"), "expected": case.get("expect"),
             "actual": actual, "status": "fail" if reasons else "pass", "reasons": reasons,
-            "duration_ms": rec.get("duration_ms", 0), "stdout": rec.get("stdout", ""), "trace": rec.get("trace")}
+            "duration_ms": rec.get("duration_ms", 0), "stdout": rec.get("stdout", ""), "trace": rec.get("trace"),
+            "holdout": bool(case.get("holdout"))}
 
 
 # First failing static check prefix -> category. Order matters: earliest pipeline problem wins.
@@ -132,6 +133,11 @@ def failures_text(report: dict) -> str:
     lines += [f"- test {t['name']} {t['status']}:\n{t['detail'][-800:]}" for t in report["tests"] if t["status"] != "pass"]
     for e in report["evals"]:
         if e["status"] == "pass":
+            continue
+        if e.get("holdout"):
+            # never reveal the holdout: it must stay an independent check that code was not fitted to visible cases
+            lines.append(f"- eval {e['name']} (holdout): failed; details withheld. Fix the general behaviour, "
+                         "do not special-case the visible examples.")
             continue
         # concrete evidence: the model can only fix behaviour it can see (input → expected vs actual)
         lines.append(f"- eval {e['name']}: {'; '.join(e['reasons'])}\n"

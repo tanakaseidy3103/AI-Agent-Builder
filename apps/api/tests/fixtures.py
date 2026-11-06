@@ -59,7 +59,7 @@ SPEC_CODE = {
 }
 
 # The four model replies of a successful code generation, in order.
-CODE_RESPONSES = [SPEC_CODE, fenced(CODE_SCRIPT), {"cases": CASES}, fenced(CODE_TEST)]
+CODE_RESPONSES = [SPEC_CODE, {"cases": CASES}, fenced(CODE_SCRIPT), fenced(CODE_TEST)]
 
 SPEC_INSTR = {
     "name": "Commit Message Writer",
