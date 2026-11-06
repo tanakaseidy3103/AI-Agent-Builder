@@ -72,6 +72,7 @@ export function VersionView({ id, onSelect }: { id: string; onSelect: (id: strin
         <Badge status={v.status} />
         <span className="text-slate-300">{t(`status.${v.status}` as Key)}</span>
       </div>
+      <EvidenceLadder v={v} />
       <p className="mb-4 text-sm text-slate-400">{v.manifest.description}</p>
       <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-white/8">
         {(["files", "manifest", "validation", "export"] as Tab[]).map((x) => (
@@ -88,6 +89,28 @@ export function VersionView({ id, onSelect }: { id: string; onSelect: (id: strin
       {tab === "validation" && <Validation v={v} />}
       {tab === "export" && <Export v={v} />}
     </Card>
+  );
+}
+
+/** What has actually been proven for this version, derived only from the stored validation report. */
+function EvidenceLadder({ v }: { v: VersionDetail }) {
+  const t = useT();
+  const r = v.validation?.report;
+  const steps: [Key, boolean][] = [
+    ["ev.generated", true],
+    ["ev.validated", v.status !== "validation_failed"],
+    ["ev.tested", r?.sandbox.status === "ran"],
+    ["ev.verified", v.status === "verified"],
+  ];
+  return (
+    <ol aria-label={t("ev.title")} className="mb-4 flex flex-wrap gap-2 text-xs">
+      {steps.map(([k, ok]) => (
+        <li key={k} data-reached={ok}
+          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${ok ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "border-white/10 text-slate-500"}`}>
+          <span aria-hidden="true">{ok ? "✓" : "○"}</span>{t(k)}
+        </li>
+      ))}
+    </ol>
   );
 }
 
