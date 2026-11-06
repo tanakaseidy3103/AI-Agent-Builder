@@ -1,70 +1,61 @@
-import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api } from "./api";
 import { useLang, useT, type Key } from "./i18n";
-import { AgentStudio } from "./studio/AgentStudio";
-import { ApiKeys } from "./studio/ApiKeys";
-import { SkillList, VersionView } from "./studio/SkillStudio";
-import { Card } from "./studio/ui";
+import { ApiKeys } from "./workspace/ApiKeys";
+import { Inspector } from "./workspace/Inspector";
+import { Session, type Request } from "./workspace/Session";
+import { Sidebar, type Page } from "./workspace/Sidebar";
 
-type Page = "create" | "skills" | "keys";
+type Pane = "nav" | "session" | "result";
 
+/** Three-pane workspace on large screens; one pane at a time (switchable) below `lg`. */
 export function App() {
   const t = useT();
-  const { lang, setLang } = useLang();
-  const [page, setPage] = useState<Page>("create");
-  const health = useQuery({ queryKey: ["health"], queryFn: () => api<{ status: string }>("/health") });
+  const { lang } = useLang();
+  const [page, setPage] = useState<Page>("workspace");
+  const [pane, setPane] = useState<Pane>("session");
+  const [requests, setRequests] = useState<Request[]>([]);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const open = (id: string, reveal = false) => { setOpenId(id); setPage("workspace"); if (reveal) setPane("result"); };
+  const newSkill = () => {
+    setPage("workspace"); setPane("session"); setRequests([]); setOpenId(null);
+    requestAnimationFrame(() => document.getElementById("prompt")?.focus());
+  };
+  const show = (p: Pane) => (pane === p ? "flex" : "hidden");
 
   return (
-    <div className="studio-backdrop min-h-screen text-slate-200">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:rounded focus:bg-ink-800 focus:px-3 focus:py-2">
-        Skip to content
-      </a>
-      <header className="sticky top-0 z-10 border-b border-white/5 bg-ink-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span aria-hidden="true" className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-violet-brand to-blue-brand text-sm font-bold text-white">A</span>
-            <div>
-              <h1 className="text-sm font-semibold text-white">AI Agent Builder</h1>
-              <p className="hidden text-[11px] text-slate-400 md:block">{t("app.tagline")}</p>
-            </div>
-          </div>
-          <nav aria-label="Main" className="flex gap-1 text-sm">
-            {(["create", "skills", "keys"] as Page[]).map((p) => (
-              <button key={p} type="button" onClick={() => setPage(p)} aria-current={page === p ? "page" : undefined}
-                className={`rounded-lg px-3 py-1.5 ${page === p ? "bg-white/10 font-medium text-white" : "text-slate-400 hover:text-slate-100"}`}>
-                {t(`nav.${p}` as Key)}
-              </button>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-xs">
-            <p className="text-slate-400" role="status">
-              {t("api.status")}: {health.isPending ? t("api.checking") : health.isError ? t("api.offline") : health.data.status}
-            </p>
-            <button type="button" onClick={() => setLang(lang === "ja" ? "en" : "ja")} lang={lang === "ja" ? "en" : "ja"}
-              className="rounded-lg border border-white/10 px-2.5 py-1 text-slate-200 hover:bg-white/5">
-              {t("lang.toggle")}
-            </button>
-          </div>
-        </div>
-      </header>
-      <main id="main" lang={lang} className="mx-auto max-w-7xl px-4 py-6">
-        {page === "create" && <AgentStudio />}
-        {page === "skills" && <SkillsPage />}
-        {page === "keys" && <ApiKeys />}
-      </main>
-    </div>
-  );
-}
+    <div lang={lang} className="flex h-dvh flex-col overflow-hidden bg-canvas text-ink lg:grid lg:grid-cols-[248px_minmax(0,1fr)_minmax(380px,40%)]">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-20 focus:rounded-md focus:bg-raised focus:px-3 focus:py-2">Skip to content</a>
 
-function SkillsPage() {
-  const t = useT();
-  const [versionId, setVersionId] = useState<string | null>(null);
-  return (
-    <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
-      <SkillList selected={versionId} onSelect={setVersionId} />
-      {versionId ? <VersionView id={versionId} onSelect={setVersionId} /> : (
-        <Card title={t("skills.title")}><p className="text-sm text-slate-400">{t("skills.select")}</p></Card>
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-line bg-panel px-2 lg:hidden" role="group" aria-label={t("ws.panes")}>
+        {(["nav", "session", "result"] as Pane[]).map((p) => (
+          <button key={p} type="button" aria-pressed={pane === p} onClick={() => setPane(p)}
+            className={`relative h-8 flex-1 rounded-md text-[13px] ${pane === p ? "bg-hover text-ink" : "text-mute hover:text-ink"}`}>
+            {t(`ws.pane.${p}` as Key)}
+            {p === "result" && openId && pane !== "result" && <span aria-hidden="true" className="absolute right-3 top-2 h-1.5 w-1.5 rounded-full bg-accent" />}
+          </button>
+        ))}
+      </div>
+
+      <aside aria-label="Sidebar" className={`${show("nav")} min-h-0 flex-1 flex-col border-line bg-panel lg:flex lg:border-r`}>
+        <Sidebar page={page} openId={openId} onNew={newSkill} onOpenVersion={(id) => open(id, true)}
+          onPage={(p) => { setPage(p); setPane("session"); }} />
+      </aside>
+
+      {page === "keys" ? (
+        <main id="main" className={`${pane === "nav" ? "hidden" : "flex"} min-h-0 flex-1 flex-col overflow-y-auto lg:col-span-2 lg:flex`}>
+          <ApiKeys />
+        </main>
+      ) : (
+        <>
+          <main id="main" className={`${show("session")} min-h-0 flex-1 flex-col lg:flex`}>
+            <Session requests={requests} openId={openId} onOpen={open}
+              onSubmit={(r) => setRequests((rs) => [...rs, r])} />
+          </main>
+          <aside aria-label={t("ws.pane.result")} className={`${show("result")} min-h-0 flex-1 flex-col border-line bg-panel lg:flex lg:border-l`}>
+            <Inspector id={openId} onSelect={setOpenId} />
+          </aside>
+        </>
       )}
     </div>
   );

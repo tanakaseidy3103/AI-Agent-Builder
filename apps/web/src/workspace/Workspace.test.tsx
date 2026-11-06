@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { LangProvider, type Lang } from "../i18n";
-import { AgentStudio } from "./AgentStudio";
+import { App } from "../App";
 
 // Mocked-backend UI tests. Real end-to-end coverage lives in apps/web/e2e (Playwright).
 const STAGES = ["analyze", "specify", "plan", "generate_files", "static_validation", "test_generation", "sandbox_tests", "evaluate", "report", "package"];
@@ -55,6 +55,9 @@ function router(url: string, init?: RequestInit) {
       stages: STAGES.map((n, i) => ({ name: n, status: done ? "passed" : i === 0 ? "running" : "pending", detail: done ? `${n} ok` : "" })) });
   }
   if (url.startsWith("/api/studio/events?run_id=j1")) return json(events);
+  if (url === "/api/health") return json({ status: "ok" });
+  if (url === "/api/studio/jobs") return json(jobPolls > 1 ? [{ id: "j1", status: "completed", provider: "ollama:test", prompt: "Laravel", skill_version_id: current.id, stages: [] }] : []);
+  if (url === "/api/studio/skills") return json([]);
   if (url === `/api/studio/versions/${current.id}`) return json(current);
   if (url.endsWith("/files/SKILL.md")) return new Response("---\nname: react-perf\n---", { headers: { "content-type": "text/plain" } });
   if (url.endsWith("/files/scripts/main.py")) return new Response("def run(data): ...", { headers: { "content-type": "text/plain" } });
@@ -75,48 +78,52 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 function renderStudio(lang: Lang = "en") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><LangProvider lang={lang}><AgentStudio /></LangProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><LangProvider lang={lang}><App /></LangProvider></QueryClientProvider>);
 }
 
 async function createFromTemplate() {
-  fireEvent.click(screen.getByRole("button", { name: "Laravel bug finder" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Laravel bug finder/ }));
   fireEvent.click(screen.getByRole("button", { name: "Create agent" }));
   await screen.findByText("Open the result", {}, { timeout: 3000 });
 }
 
-it("first-time user: hero, templates, chat flow, real-event robots, result tabs and export", async () => {
+it("first-time user: intro, sample, live pipeline from real stages/events, result workspace and export", async () => {
   renderStudio();
-  expect(screen.getByRole("heading", { name: "Build AI agents you can actually trust" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "What should your Skill do?" })).toBeTruthy();
+  expect(screen.getByText("No Skill selected")).toBeTruthy();                 // empty result pane before any run
   const send = screen.getByRole("button", { name: "Create agent" }) as HTMLButtonElement;
   expect(send.disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Laravel bug finder" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Laravel bug finder/ }));
   expect((screen.getByLabelText("Describe the agent you want") as HTMLTextAreaElement).value).toContain("Laravel");
   fireEvent.click(send);
 
   expect(await screen.findByText("Open the result", {}, { timeout: 3000 })).toBeTruthy();
   expect(jobPolls).toBeGreaterThanOrEqual(2); // kept polling while 'generating'
   expect(screen.getByText(/react-perf@0.1.0 is verified/)).toBeTruthy();
-  expect(within(screen.getByLabelText("pipeline stages")).getAllByRole("listitem")).toHaveLength(10);
 
-  // robots reflect the latest persisted event per role; roles without events stay 'waiting'
-  expect(screen.getByTestId("robot-architect").dataset.state).toBe("idle");
-  expect(screen.getByTestId("robot-tester").dataset.state).toBe("failed");
-  expect(screen.getByTestId("robot-coder").dataset.state).toBe("working");
-  expect(within(screen.getByTestId("robot-coder")).getByText("1 repair round(s)")).toBeTruthy();
-  expect(screen.getByTestId("robot-reviewer").dataset.state).toBe("waiting");
+  // role states come from the job's stages; repair rounds and the log from persisted events
+  for (const r of ["architect", "coder", "reviewer", "tester", "packager"]) expect(screen.getByTestId(`role-${r}`).dataset.state).toBe("passed");
+  expect(within(screen.getByTestId("role-coder")).getByText("1 repair round(s)")).toBeTruthy();
   expect(screen.getByText("sandbox_tests: failed — 1/3 tests passed")).toBeTruthy();
   expect(screen.getByText(/Planned \(not implemented yet\)/)).toBeTruthy();
+  const flow = within(screen.getByRole("list", { name: "Pipeline", hidden: false }).closest("section")!);
+  expect(flow.getAllByRole("listitem").some((li) => li.dataset.flow === "repair" && li.dataset.state === "passed")).toBe(true);
 
-  fireEvent.click(screen.getByRole("button", { name: "Open the result" }));
+  // the finished version opens in the result pane automatically
+  expect(await screen.findByText("def run(data): ...")).toBeTruthy();       // code entrypoint preselected in the file explorer
+  fireEvent.click(screen.getByRole("button", { name: "SKILL.md" }));
   expect(await screen.findByText(/name: react-perf/)).toBeTruthy();
   const ladder = within(screen.getByLabelText("Evidence")).getAllByRole("listitem");
   expect(ladder.map((li) => li.dataset.reached)).toEqual(["true", "true", "true", "true"]);
-  fireEvent.click(screen.getByRole("tab", { name: "Validation" }));
+  fireEvent.click(screen.getByRole("tab", { name: /Tests/ }));
   expect(screen.getByText("hidden holdout")).toBeTruthy();
+  fireEvent.click(screen.getByRole("tab", { name: "Validation" }));
   expect(screen.getByText(/ran · 800 ms · no network · 256 MB/)).toBeTruthy();
   fireEvent.click(screen.getByRole("tab", { name: "Export" }));
   expect(await screen.findAllByText(/refuses to overwrite/)).toHaveLength(2);
   expect((screen.getByText("Download ZIP") as HTMLAnchorElement).getAttribute("href")).toBe("/api/studio/versions/v1/export/claude-code");
+  // the sidebar lists the real recent request and model
+  expect(within(screen.getByRole("complementary", { name: "Sidebar" })).getByText("ollama:test")).toBeTruthy();
 });
 
 it("explains a policy failure, why the sandbox did not run, and blocks export", async () => {
@@ -135,7 +142,7 @@ it("explains a policy failure, why the sandbox did not run, and blocks export", 
   expect(screen.getByText(/The Skill cannot run external programs or linters/)).toBeTruthy();
   expect(screen.getByText(/static validation failed first, so the code was never executed/)).toBeTruthy();
   fireEvent.click(screen.getByRole("tab", { name: "Export" }));
-  expect(screen.getByRole("alert").textContent).toContain("cannot be exported");
+  expect(screen.getAllByRole("alert").some((a) => a.textContent?.includes("cannot be exported"))).toBe(true);
   expect(screen.queryByText("Download ZIP")).toBeNull();
 });
 
@@ -153,10 +160,20 @@ it("validates the minimum prompt length", () => {
   expect((screen.getByRole("button", { name: "Create agent" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
+it("New Skill clears the conversation and API keys page is reachable", async () => {
+  renderStudio();
+  await createFromTemplate();
+  fireEvent.click(screen.getByRole("button", { name: "New Skill" }));
+  expect(screen.queryByText("Open the result")).toBeNull();
+  expect(screen.getByRole("heading", { name: "What should your Skill do?" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "API keys" }));
+  expect(screen.getByRole("heading", { name: /^API keys/ })).toBeTruthy();
+});
+
 it("renders the Japanese interface", async () => {
   renderStudio("ja");
-  expect(screen.getByRole("heading", { name: "信頼できる AI エージェントを、言葉から。" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Laravel のバグ検出" }));
+  expect(screen.getByRole("heading", { name: "Skill に何をさせますか？" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /^Laravel のバグ検出/ }));
   fireEvent.click(screen.getByRole("button", { name: "エージェントを作成" }));
   expect(await screen.findByText("結果を開く", {}, { timeout: 3000 })).toBeTruthy();
   expect(screen.getByText(/react-perf@0.1.0 は verified です/)).toBeTruthy();
