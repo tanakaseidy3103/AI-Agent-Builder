@@ -240,6 +240,8 @@ function AgentOffice({ job }: { job?: Job }) {
   // one last fetch once the job settles, so the final events are not missed
   useEffect(() => { if (runId && !live) events.refetch(); }, [live, runId]); // eslint-disable-line react-hooks/exhaustive-deps
   const evs = events.data ?? [];
+  // real retries: each repair round emits "generate_files: started (repair N)"
+  const repairs = evs.filter((e) => e.agent_id === "coder" && /started \(repair \d+\)/.test(e.message ?? "")).length;
   const stateOf = useMemo(() => {
     const m = new Map<AgentId, RobotState>();
     for (const e of evs) m.set(e.agent_id, (e.state as RobotState) ?? "idle");
@@ -258,6 +260,7 @@ function AgentOffice({ job }: { job?: Job }) {
               <Robot accent={r.accent} state={s} label={`${name}: ${t(`state.${s}` as Key)}`} />
               <span className="mt-1 text-sm font-semibold text-slate-100">{name}</span>
               <span className="text-[11px] text-slate-400">{t(`role.${r.id}.does` as Key)}</span>
+              {r.id === "coder" && repairs > 0 && <span className="text-[11px] text-amber-200">{t("office.repairs", { n: repairs })}</span>}
               <span className="mt-1 text-[11px] font-medium" style={{ color: s === "waiting" ? "#6b7699" : r.accent }}>{t(`state.${s}` as Key)}</span>
             </li>
           );
