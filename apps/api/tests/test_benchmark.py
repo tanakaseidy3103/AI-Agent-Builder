@@ -77,3 +77,20 @@ def test_suspend_watch_ignores_normal_jitter():
     for now in (1.0, 2.5, 9.0, 12.0):  # slow ticks under load are not a suspend
         w.observe(now)
     assert w.gaps == []
+
+
+def test_pending_skips_recorded_runs_in_attempt_major_order():
+    done = [{"model": "ollama:m", "task": t, "attempt": 1} for _, t, _ in bench.TASKS]
+    todo = list(bench.pending(["m"], 2, done))
+    assert [(a, tid) for _, a, _, tid, _ in todo] == [(1, t) for _, t, _ in bench.TASKS]  # only attempt 2 left
+
+
+def test_resume_refuses_a_different_code_commit(tmp_path, monkeypatch):
+    import json
+    import pytest
+    monkeypatch.setattr(bench, "OUT", tmp_path)
+    (tmp_path / "s.json").write_text(json.dumps({"meta": {"git_commit": "aaaaaaa1"}, "runs": []}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="refusing to resume"):
+        bench.load_for_resume("s", "bbbbbbb2")
+    stamp, m, rows = bench.load_for_resume("s", "aaaaaaa1")
+    assert stamp == "s" and rows == [] and len(m["resumed_utc"]) == 1
