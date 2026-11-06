@@ -292,3 +292,17 @@ def test_repair_prompt_tells_the_model_how_to_fix_a_policy_violation(factory, fa
     assert "forbidden modules ['subprocess']" in fix_prompt and "'phpstan'" in fix_prompt
     assert "how to fix:" in fix_prompt and "cannot run external programs" in fix_prompt
     assert v.status == "verified"  # once the model follows the guidance, verification proceeds normally
+
+
+def test_eval_expectations_are_shaped_like_the_output_schema(factory, fake, sbx):
+    fake.responses = list(CODE_RESPONSES)
+    _run(factory, fake)
+    contains = fake.schemas[1]["properties"]["cases"]["items"]["properties"]["expect"]["properties"]["contains"]
+    assert contains["properties"] == SPEC_CODE["output_schema"]["properties"]
+    assert contains["additionalProperties"] is False and "required" not in contains  # a subset, nothing required
+
+
+def test_cases_schema_falls_back_when_output_schema_has_no_properties():
+    from app.skills.pipeline import cases_schema
+    contains = cases_schema({"type": "object"}, {"type": "object"})["properties"]["cases"]["items"]["properties"]["expect"]["properties"]["contains"]
+    assert contains == {"type": "object"}
