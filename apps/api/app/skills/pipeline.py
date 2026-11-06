@@ -106,9 +106,11 @@ def run(data: dict) -> dict:
     return {"findings": findings, "count": len(findings)}
 ```"""
 
-TESTS_SYSTEM = """You write unittest tests for a Skill module importable as `from main import run`.
+TESTS_SYSTEM = """You write unittest tests from a Skill's SPECIFICATION. You have NOT seen the implementation; it will be
+importable as `from main import run` and must return output matching output_schema.
 Rules: `import unittest`; one TestCase class; at least 3 test_ methods; every method calls self.assert...;
-inputs match input_schema; assert only behaviour the code clearly implements; stdlib only; no files, no network.
+inputs match input_schema; assert behaviour the specification requires (what must be found, counts, required keys),
+using small inputs whose correct answer is unambiguous; stdlib only; no files, no network.
 Reply with ONLY one fenced ```python code block."""
 
 CASES_SYSTEM = """Write 3 realistic test cases for this Skill from its SPEC (no code exists yet).
@@ -288,7 +290,8 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
 
     t.start("test_generation")
     if m.kind == "code":
-        tb = extract_blocks(provider.complete(TESTS_SYSTEM, f"{ctx}\n\nModule main.py:\n```python\n{code}```"))
+        # spec + visible example inputs only: tests that see the code end up asserting the code's own bugs
+        tb = extract_blocks(provider.complete(TESTS_SYSTEM, code_ctx))
         tests = tb[0] if tb else ""
         files = render_files(m, instructions, code, "", tests, cases)
         t.done("test_generation", detail="tests/test_main.py")
