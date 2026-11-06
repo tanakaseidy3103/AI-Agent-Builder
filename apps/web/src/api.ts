@@ -8,14 +8,27 @@ export interface Job {
   error: string | null; provider: string | null; skill_version_id: string | null;
 }
 export type VersionStatus = "validation_failed" | "validated" | "verified";
-export interface Check { id: string; status: "pass" | "fail" | "warn"; message: string }
+export interface Check { id: string; status: "pass" | "fail" | "warn"; message: string; hint?: string | null }
 export interface TestResult { name: string; status: "pass" | "fail" | "error" | "skip"; detail: string }
+export interface EvalResult {
+  name: string; status: "pass" | "fail"; reasons: string[]; holdout?: boolean;
+  input?: unknown; expected?: unknown; actual?: unknown;
+}
+export type FailureCategory =
+  | "none" | "syntax" | "policy" | "hallucinated_api" | "entrypoint" | "test_definition" | "spec_error"
+  | "test_failure" | "eval_failure" | "execution_limit" | "infra" | "not_executable";
 export interface Report {
   status: VersionStatus; duration_ms: number;
   static: { passed: number; failed: number; warnings: number; checks: Check[] };
   tests: TestResult[];
+  evals?: EvalResult[];
+  criteria?: { id: string; passed: boolean; detail: string }[];
+  failure_category?: FailureCategory;
+  repair_rounds?: number;
   sandbox: { status: "ran" | "error" | "unavailable" | "not_run"; error?: string | null; duration_ms?: number; limits?: { memory_mb: number; timeout_s: number } };
 }
+export type AgentId = "architect" | "coder" | "reviewer" | "tester" | "packager";
+export interface AgentEvent { id: number; agent_id: AgentId; run_id: string; state: string; message: string | null; at: string }
 export interface VersionSummary { id: string; slug: string; version: string; kind: string; status: VersionStatus; file_count: number }
 export interface Manifest {
   id: string; name: string; description: string; version: string; kind: "code" | "instructions";

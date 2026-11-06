@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, type ApiKeyRow } from "../api";
-import { Card, CopyBlock, ErrorBox } from "./ui";
+import { useT } from "../i18n";
+import { Card, CopyBlock, ErrorBox, inputCls, primaryBtn } from "./ui";
 
 export function ApiKeys() {
+  const t = useT();
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [created, setCreated] = useState<string | null>(null);
@@ -17,26 +19,27 @@ export function ApiKeys() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["keys"] }),
   });
   return (
-    <Card title="API keys (for /v1 and the SDK)">
+    <Card title={t("keys.title")} className="max-w-3xl">
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-        <input aria-label="key name" className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm" placeholder="my-backend"
-          value={name} onChange={(e) => setName(e.target.value)} />
-        <button disabled={!name || create.isPending} className="rounded bg-slate-800 px-3 py-1 text-sm text-white disabled:opacity-50">Create</button>
+        <input aria-label={t("keys.name")} className={inputCls} placeholder="my-backend" value={name} onChange={(e) => setName(e.target.value)} />
+        <button disabled={!name || create.isPending} className={primaryBtn}>{t("keys.create")}</button>
       </form>
-      {create.error && <ErrorBox error={create.error} />}
+      {create.error && <div className="mt-3"><ErrorBox error={create.error} /></div>}
       {created && (
         <div className="mt-3">
-          <p className="text-xs text-amber-800">Shown once. Store it in your server environment — never in browser code.</p>
+          <p className="text-xs text-amber-200">{t("keys.once")}</p>
           <CopyBlock label="API key" text={created} />
           <CopyBlock label="Python" text={`from agent_builder import SkillClient\nclient = SkillClient(api_key=os.environ["AAB_API_KEY"])\nprint(client.list())`} />
         </div>
       )}
-      <ul className="mt-3 divide-y divide-slate-100 text-sm">
+      {keys.error && <div className="mt-3"><ErrorBox error={keys.error} /></div>}
+      {keys.data?.length === 0 && <p className="mt-3 text-sm text-slate-400">{t("keys.empty")}</p>}
+      <ul className="mt-3 divide-y divide-white/5 text-sm">
         {keys.data?.map((k) => (
-          <li key={k.id} className="flex items-center justify-between py-1.5">
-            <span><span className="font-mono text-xs">{k.prefix}…</span> {k.name}</span>
-            {k.revoked_at ? <span className="text-xs text-slate-400">revoked</span> : (
-              <button type="button" onClick={() => revoke.mutate(k.id)} className="text-xs text-rose-700 hover:underline">Revoke</button>
+          <li key={k.id} className="flex items-center justify-between py-2">
+            <span className="text-slate-200"><span className="font-mono text-xs text-slate-400">{k.prefix}…</span> {k.name}</span>
+            {k.revoked_at ? <span className="text-xs text-slate-500">{t("keys.revoked")}</span> : (
+              <button type="button" onClick={() => revoke.mutate(k.id)} className="text-xs text-rose-300 hover:underline">{t("keys.revoke")}</button>
             )}
           </li>
         ))}
