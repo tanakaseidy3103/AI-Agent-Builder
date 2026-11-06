@@ -394,3 +394,14 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
     t.done("package", detail=f"{slug}@{m.version} stored ({len(files)} files), status {status}")
     emit_event(s, job.id, "packager", "completed", f"{slug}@{m.version} is {status}")
     s.commit()
+
+
+def fail_interrupted_jobs(s: Session) -> int:
+    """Background jobs run inside the API process; after a restart nothing will ever finish them."""
+    stale = list(s.scalars(select(GenerationJob).where(GenerationJob.status.in_(("draft", "generating")))))
+    for job in stale:
+        job.status, job.stage = "failed", None
+        job.error = "interrupted: the API restarted while this job was running. Create the request again."
+        audit(s, "skill.generate.interrupted", job.id)
+    s.commit()
+    return len(stale)
