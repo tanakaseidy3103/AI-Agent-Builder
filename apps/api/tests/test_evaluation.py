@@ -126,3 +126,32 @@ def test_do_nothing_skill_is_not_verified():
     assert status == "validated"
     assert report["summary"]["tests_passed"] == 3  # its own tests pass...
     assert any(e["status"] == "fail" for e in report["evals"])  # ...but the spec-derived expectation catches it
+
+
+def _report(status="validated", failed=(), sandbox=None, criteria=None):
+    return {"status": status, "static": {"checks": [{"id": f, "status": "fail"} for f in failed]},
+            "sandbox": sandbox or {"status": "ran"}, "criteria": criteria or [{"id": "static", "passed": True}]}
+
+
+@pytest.mark.parametrize("report,expected", [
+    (_report("verified"), "none"),
+    (_report("validation_failed", ["python.syntax:scripts/main.py", "code.tests"]), "syntax"),
+    (_report("validation_failed", ["python.api:scripts/main.py"]), "hallucinated_api"),
+    (_report("validation_failed", ["code.evals"]), "spec_error"),
+    (_report(sandbox={"status": "unavailable", "error": "Docker daemon is not running"}), "infra"),
+    (_report(sandbox={"status": "error", "error": "timeout after 10s"}), "execution_limit"),
+    (_report(criteria=[{"id": "static", "passed": True}]), "not_executable"),
+    (_report(criteria=[{"id": "static", "passed": True}, {"id": "unit_tests", "passed": False},
+                       {"id": "eval_cases", "passed": False}]), "test_failure"),
+    (_report(criteria=[{"id": "static", "passed": True}, {"id": "unit_tests", "passed": True},
+                       {"id": "eval_cases", "passed": False}]), "eval_failure"),
+])
+def test_failure_category(report, expected):
+    from app.skills.evaluation import failure_category
+    assert failure_category(report) == expected
+
+
+@docker
+def test_reference_report_carries_failure_category():
+    status, report = full_validation(load_reference(REFERENCE_DIR / "api-test-planner"))
+    assert status == "verified" and report["failure_category"] == "none"
