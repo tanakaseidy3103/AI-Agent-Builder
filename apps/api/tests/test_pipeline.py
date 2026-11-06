@@ -306,3 +306,13 @@ def test_cases_schema_falls_back_when_output_schema_has_no_properties():
     from app.skills.pipeline import cases_schema
     contains = cases_schema({"type": "object"}, {"type": "object"})["properties"]["cases"]["items"]["properties"]["expect"]["properties"]["contains"]
     assert contains == {"type": "object"}
+
+
+def test_tests_are_written_from_the_spec_without_seeing_the_code_or_holdout(factory, fake, sbx):
+    fake.responses = [SPEC_CODE, {"cases": HOLDOUT_CASES}, fenced(CODE_SCRIPT), fenced(CODE_TEST)]
+    _run(factory, fake)
+    tests_prompt = fake.calls[3][1]
+    assert "findings.append" not in tests_prompt                          # the generated code is absent
+    assert "re.search" not in tests_prompt                                 # implementation details absent
+    assert "App.tsx" in tests_prompt and "B.tsx" not in tests_prompt       # visible inputs yes, holdout no
+    assert "SPECIFICATION" in fake.calls[3][0]
