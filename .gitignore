@@ -17,3 +17,6 @@ unity/**/[Bb]uild/
 unity/**/[Ll]ogs/
 unity/**/[Uu]ser[Ss]ettings/
 data/
+.playwright-mcp/
+apps/web/test-results/
+apps/web/playwright-report/
