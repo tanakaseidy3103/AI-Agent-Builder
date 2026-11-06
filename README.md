@@ -1,74 +1,67 @@
 # AI Agent Builder
 
-Plataforma web para criar, testar, melhorar e integrar capacidades de IA nos seus próprios apps.
-就職作品 — HAL名古屋.
+Describe an AI agent in plain language (English or Japanese). The Studio writes a reusable Skill, generates tests
+and evaluation cases from your request, runs them in an isolated Docker sandbox, and marks the Skill **verified**
+only when every objective check passes. Verified and validated Skills install into Claude Code, Codex and Cursor.
 
-## O que funciona hoje
+就職作品 — HAL名古屋 · 日本語の手順: [docs/ja/QUICKSTART.md](docs/ja/QUICKSTART.md)
 
-**Skill Compiler** ([docs/skills.md](docs/skills.md)): descrição em linguagem natural → pacote de Skill → validação
-estática → testes em sandbox Docker isolado → relatório → exportação ZIP para Claude Code / Codex / Cursor →
-execução por API (`/v1`) e SDK Python.
+![Agent Studio](docs/evidence/screenshots/studio-desktop-en.png)
 
-| Parte | Estado |
+## What works today (verified by tests)
+
+| Capability | Status |
 |---|---|
-| Formato de pacote (`SKILL.md` + `manifest.json`) | Implementado e testado |
-| Pipeline de 9 estágios persistidos (Ollama) | Implementado e testado; testes com LLM falso + execução real |
-| Validação estática + sandbox Docker (sem rede, read-only, limites) | Implementado e testado |
-| Status `generated` / `validated` / `verified` | Implementado |
-| Exportação ZIP + comandos que não sobrescrevem | Implementado; comando bash testado de verdade |
-| API pública `/v1` com API key, rate limit, logs, auditoria | Implementado e testado |
-| SDK Python (`packages/sdk-python`) | Implementado; testado contra a API real |
-| Skill Studio (web) | Implementado; testes Vitest |
-| Contas de usuário, projetos, agentes, Evaluation Lab, Unity, SDK TypeScript | **Planejado** |
+| Agent Studio UI: chat request, templates, Agent Office driven by real backend events, result tabs, EN/JA | Implemented · Vitest + Playwright (desktop & mobile) |
+| Skill generation pipeline (Ollama): spec → eval cases → code → tests → bounded repair → sandbox → evaluation | Implemented · pytest |
+| Objective `verified`: static checks, ≥3 asserting unit tests, all eval cases incl. a hidden holdout, schema, determinism | Implemented · negative controls in pytest |
+| Docker sandbox (no network, read-only, unprivileged, resource limits, timeout) | Implemented · real-Docker tests |
+| Export ZIP + non-overwriting install commands; real install in Claude Code and Codex | Implemented · external E2E evidence in `docs/evidence/` |
+| `/v1` API with hashed API keys, rate limit, audit log; Python SDK | Implemented · pytest |
+| Reproducible generation benchmark (seeds, model digests, suspend detection, resume) | Implemented · `docs/benchmarks/` |
+| GitHub integration, user accounts, visual workflow editor, 3D scene | **Not implemented** |
 
-Limitação importante: com `llama3.2:3b`, nenhuma de 8 gerações reais de Skills com código passou na validação.
-Skills só de instruções funcionam. Para código, configure um modelo mais forte em `LLM_MODEL`.
+**Honest limitation:** with the local models tested (llama3.2:3b, qwen2.5-coder 7B), **0 of 30 generated code
+Skills reached `verified`** (benchmark B). The validator works (the 5 human-written reference Skills are verified);
+the models' code is not yet good enough. See [docs/benchmarks/PHASE1_ANALYSIS.md](docs/benchmarks/PHASE1_ANALYSIS.md).
 
-## Requisitos
+## Requirements
 
 - Node.js 22+, npm 10+
-- [uv](https://docs.astral.sh/uv/) (baixa Python 3.12 automaticamente)
-- Docker Desktop (PostgreSQL e sandbox) · `docker pull python:3.12-slim`
-- [Ollama](https://ollama.com) com um modelo (`ollama pull llama3.2:3b`)
+- [uv](https://docs.astral.sh/uv/) (provides Python 3.12)
+- Docker Desktop (Postgres + sandbox) · `docker pull python:3.12-slim`
+- [Ollama](https://ollama.com) · `ollama pull qwen2.5-coder` (default model; configurable with `LLM_MODEL`)
 
-## Rodando localmente (modo completo, com sandbox)
+## Run locally
 
 ```bash
-docker compose up -d db                          # PostgreSQL em 127.0.0.1:5433
+docker compose up -d db                                   # Postgres on 127.0.0.1:5433
 cd apps/api
 uv sync
-uv run alembic upgrade head
-uv run uvicorn app.main:app --port 8000          # API no host (precisa do docker CLI para o sandbox)
-# outro terminal, na raiz:
+.venv/Scripts/python.exe -m alembic upgrade head
+.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000   # API on the host (needs the docker CLI for the sandbox)
+# another terminal, repository root:
 npm install
-npm run dev:web                                  # http://localhost:5173 (proxy /api -> :8000)
+npm run dev:web                                           # http://localhost:5173 (proxy /api -> :8000)
 ```
 
-Configuração opcional por variáveis de ambiente (veja `.env.example`): `LLM_MODEL`, `OLLAMA_BASE_URL`,
-`DATABASE_URL`, `STORAGE_DIR`, `SANDBOX_IMAGE`, `RATE_LIMIT_PER_MINUTE`.
+Optional: `POST /studio/reference/seed` imports the five human-written reference Skills (validated in the sandbox).
+Settings (see `.env.example`): `LLM_MODEL`, `OLLAMA_BASE_URL`, `DATABASE_URL`, `STORAGE_DIR`, `SANDBOX_IMAGE`,
+`RATE_LIMIT_PER_MINUTE`, `ALLOWED_HOSTS`.
 
-`docker compose up -d` também sobe a API em container, mas nele o sandbox fica **indisponível** de propósito
-(sem socket Docker montado). Use um modo por vez (porta 8000).
+## Tests
 
-## Testes
+See [docs/TESTING.md](docs/TESTING.md). Short version:
 
 ```bash
-cd apps/api && uv run pytest                                   # backend (sandbox real se Docker estiver ativo)
-npm test && npm run build                                      # web + contracts
-cd packages/sdk-python && PYTHONPATH=. uv run --no-project --python 3.12 --with pytest pytest tests
+cd apps/api && .venv/Scripts/python.exe -m pytest -q      # backend (Docker running → no skips)
+npm test && npm run build                                 # web + contracts
+cd apps/web && npx playwright test                        # browser, desktop + mobile
 ```
 
-## Documentação
+## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — arquitetura geral
-- [docs/skills.md](docs/skills.md) — formato, pipeline, validação, segurança, instalação, API, SDK, limitações
-- [docs/adr/](docs/adr/) — decisões
-
-## Roadmap
-
-0. Estrutura do monorepo — feito
-1. **Skill Compiler** — feito (fatia vertical)
-2. Auth, projetos, agentes, provider de LLM hospedado
-3. Evaluation Lab (personas, asserções determinísticas, regressão)
-4. Deploy de agentes, SDK TypeScript, app React de exemplo
-5. Unity WebGL Workspace
+- [docs/architecture.md](docs/architecture.md) · [docs/skills.md](docs/skills.md) (package, pipeline, statuses, export, API, SDK)
+- [docs/SECURITY.md](docs/SECURITY.md) · [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md)
+- [docs/benchmarks/](docs/benchmarks/) · [docs/FINAL_PRODUCT_ROADMAP.md](docs/FINAL_PRODUCT_ROADMAP.md)
+- 日本語: [クイックスタート](docs/ja/QUICKSTART.md) · [企業導入準備状況](docs/ja/ENTERPRISE_READINESS.md)
