@@ -1,85 +1,59 @@
 # Testing
 
-Last full run: 2026-11-05, commit `3163dc2`+, Windows 11, Docker 29.9, Ollama 0.40.14, RTX 3050 6 GB.
-Every number below was produced by a command in this file; nothing is estimated.
+Last full run: 2026-11-06, branch `feature/phase1-compiler-reliability`, Windows 11, Docker 29, Ollama 0.40.14,
+RTX 3050 6 GB. Every number below was produced by the commands in this file.
 
-## How to run
+## Commands
 
 ```bash
-docker compose up -d db                                    # Postgres on 127.0.0.1:5433
-cd apps/api
-.venv/Scripts/python.exe -m pytest -q                      # backend (needs Docker for the real sandbox tests)
-cd ../.. && npm test && npm run build                      # web + contracts, production build
+docker compose up -d db                                      # Postgres on 127.0.0.1:5433 (needed by e2e and the API)
+cd apps/api && .venv/Scripts/python.exe -m pytest -q         # backend (Docker needed for the real sandbox tests)
+.venv/Scripts/python.exe -m alembic check                    # models vs migrations
+cd ../.. && npm test && npm run build                        # web + contracts, tsc + production build
 cd packages/sdk-python && PYTHONPATH=. ../../apps/api/.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider tests
+cd apps/web && npx playwright test                           # browser tests, desktop + mobile (reuses :5173 / :8000)
+RUN_REAL_GENERATION=1 npx playwright test real-generation --project=desktop   # opt-in, minutes, real Ollama
 ```
 
-Use `.venv/Scripts/python.exe` directly. On this machine `uv run` intermittently stalled for minutes.
-If Docker is not running, the 15 real-sandbox tests are **skipped, not passed**. Check that the summary shows no "skipped".
+Use `.venv/Scripts/python.exe` directly; `uv run` intermittently stalled on this machine. If Docker is not running,
+the real-sandbox tests are **skipped, not passed**. Check that the summary shows no "skipped".
 
-## Results (latest run)
+## Results (latest)
 
 | Suite | Result |
 |---|---|
-| Backend (pytest) | **103 passed**, 0 skipped (Docker running) |
-| Web (Vitest) | 5 passed |
-| Contracts (Vitest) | 1 passed |
+| Backend pytest | **139 passed**, 0 skipped |
+| Web unit (Vitest, mocked backend) | 7 passed |
+| Contracts | 1 passed |
 | Python SDK | 6 passed |
-| Production build (`tsc` + `vite build`) | OK |
-| `alembic check` against existing Postgres | "No new upgrade operations detected" |
+| Production build (`tsc` + `vite build`) | OK (≈95 KB gzip JS) |
+| `alembic check` | no new upgrade operations |
+| Playwright desktop + mobile | **22 passed**, 1 skipped (opt-in real generation) |
+| Playwright real generation (opt-in, run once) | passed in 1.1 min: real Ollama + sandbox, honest `validated` outcome (evidence: `docs/evidence/screenshots/real-generation-outcome-llama.png`) |
 
-## What the backend tests cover
+## What each layer proves
 
-| File | Tests | Covers |
+| Layer | Mocks | Proves |
 |---|---|---|
-| test_validation.py | 31 | path traversal, limits, manifest/frontmatter, syntax, import/call policy, permissions, dependencies |
-| test_api.py | 28 | Studio and /v1 routes, export layouts and install roots, API keys, rate limit, input validation, run isolation per key, audit, sandbox outage keeps status |
-| test_pipeline.py | 16 | pipeline with a deterministic fake LLM: stages, events, repair loop, frozen tests, unrepairable failures, approved plan, unexpected exceptions |
-| test_evaluation.py | 14 | schema validator, judging; **real sandbox**: all 5 reference Skills verified, plus negative controls (wrong expectation, regressed code, nondeterminism, do-nothing Skill) |
-| test_sandbox.py | 6 | **real Docker**: no network, timeout, no host env, read-only FS, uid 65534, forged-result attack, tar traversal |
-| test_llm.py | 6 | Ollama errors: unreachable, timeout, truncation (`done_reason=length`), malformed response, bounded options |
-| test_contracts.py / test_health.py | 2 | shared AgentEvent contract, health |
+| `tests/test_validation.py`, `test_evaluation.py` | none (real Docker for sandbox cases) | static policy, schema checks, objective `verified`, negative controls |
+| `tests/test_pipeline.py` | fake LLM, fake sandbox | pipeline order, repair loop, holdout secrecy, frozen tests, no-progress stop, regression for the PHPStan failure |
+| `tests/test_sandbox.py` | none | network/env/FS isolation, timeout, forged-result defence |
+| `tests/test_api.py` | fake LLM | routes, export rules, API keys, rate limit, Host allowlist |
+| `tests/test_benchmark.py` | — | independent seeds, dedupe, Wilson CI, sleep prevention, suspend detection, resume |
+| Vitest `AgentStudio.test.tsx` | intercepted fetch | chat flow, robots from events, validation explanations, Japanese UI |
+| Playwright `ui-mocked.spec.ts` | intercepted `/api` | browser states, keyboard, overflow, console errors, mobile layout |
+| Playwright `real.spec.ts` | **none** | verified reference Skill evidence + real ZIP, server-side export block (409), API key lifecycle, accessibility basics |
+| Playwright `real-generation.spec.ts` | **none** | a real generation drives the Agent Office from persisted events and ends with an honest status |
 
-The pipeline tests use a fake LLM (deterministic) and, where marked, a fake sandbox. Real-model behaviour is
-measured only by the benchmark below, never by unit tests.
+## External E2E (real coding agents)
 
-## Negative controls (prove `verified` can be refused)
-
-| Test | Mutation | Result |
-|---|---|---|
-| `test_wrong_expectation_is_caught` | eval expects count 99 | `validated`; actual output (6) recorded |
-| `test_regressed_code_is_caught_by_tests_and_evals` | img-alt rule disabled | tests and evals fail |
-| `test_nondeterministic_code_is_caught` | random value in output | "non-deterministic" |
-| `test_do_nothing_skill_is_not_verified` | `run` returns nothing; 3 vacuous tests | own tests 3/3 pass, spec-derived `expect` fails → `validated` |
-| `test_trivial_tests_are_rejected_statically` | tests without assertions | `validation_failed` |
-| `test_repair_cannot_replace_failing_assertions_with_trivial_tests` | repair returns `assertTrue(True)` tests | tests stay frozen, not verified |
-| `test_generated_code_cannot_forge_test_results` | atexit prints fake "all pass" | real failure reported |
-
-## External E2E (real tools, real Skill)
-
-`apps/api/scripts/e2e_external.py --target claude-code|codex [--root DIR]` exports `python-code-analyzer` from the
-running API, installs it into a throwaway project (never into `~/.claude` or `~/.codex`), runs the real CLI
-headless, and passes only if the tool **loaded the Skill**, **ran its script**, and **reported the 3 planted defects**.
-
-| Evidence file | Tool | Result | Notes |
-|---|---|---|---|
-| e2e-claude-code-20261105-114823.json | Claude Code 2.1.138 | passed | `Skill` tool call `python-code-analyzer`, then `scripts/cli.py` |
-| e2e-claude-code-20261105-121758.json | Claude Code 2.1.138 | passed | re-run on current code |
-| e2e-codex-20261105-115717.json | Codex CLI 0.163.0 | **failed (environment)** | Windows sandbox `CreateProcessWithLogonW failed: 267` — project under `%TEMP%`, unreadable for Codex's sandbox user; old `.codex/skills` path |
-| e2e-codex-20261105-121624.json | Codex CLI 0.163.0 | **failed (our detector bug)** | Codex did read SKILL.md and ran the script; detector missed escaped separators |
-| e2e-codex-20261105-121728.json | Codex CLI 0.163.0 | passed | `--root C:\Users\Public`, `.agents/skills`, `--sandbox read-only` |
-| — | Cursor | **not tested** | Cursor is not installed on this machine |
-
-Each run consumes the user's Claude Code / Codex subscription; they are not part of CI.
-
-## Generation benchmark
-
-Raw data: `docs/benchmarks/20261105-121419.json` (+ `.md`). Analysis, including the fixed-seed flaw that makes the
-3 attempts per task non-independent: `docs/FINAL_PRODUCT_ROADMAP.md` §3. Result so far: **0 generated code Skills verified**.
-Command: `.venv/Scripts/python.exe -u scripts/benchmark_generation.py --models llama3.2:3b qwen2.5-coder:latest --attempts 3`.
+`apps/api/scripts/e2e_external.py --target claude-code|codex [--root DIR]` exports `python-code-analyzer`, installs it
+into a throwaway project, runs the real CLI headless and passes only if the tool loaded the Skill, ran its script and
+reported the planted defects. Evidence: `docs/evidence/e2e-*.json`. Claude Code and Codex passed; Cursor is not
+installed here (not tested).
 
 ## Not tested
 
-- Browser end-to-end (Playwright) of the Studio UI.
 - PowerShell install commands (bash commands are tested).
 - Multi-user isolation (no user accounts exist).
-- CI on GitHub (never pushed).
+- CI on GitHub Actions (workflow exists; results not reviewed in this phase).
