@@ -21,7 +21,7 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, testIgnore: /real-generation/ },
+    { name: "mobile", use: { ...devices["Pixel 7"] }, testIgnore: /real-(generation|workflow)/ },
   ],
   webServer: [
     { command: "npm run dev -- --port 5173 --strictPort", url: "http://localhost:5173", reuseExistingServer: true, timeout: 60_000 },

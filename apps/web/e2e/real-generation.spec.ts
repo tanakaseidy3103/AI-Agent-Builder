@@ -10,13 +10,12 @@ test.setTimeout(15 * 60_000);
 
 test("real generation drives the Agent Office from persisted events and ends with an honest status", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Python code review" }).click();
-  await page.locator("details", { hasText: "Advanced" }).locator("summary").click();
+  await page.getByRole("button", { name: /^Python code review/ }).click();
   await page.getByLabel("Skill type").selectOption("code");
   await page.getByRole("button", { name: "Create agent" }).click();
   await expect(page.getByText(/Request received/)).toBeVisible();
   // the planner must move only because the backend emitted an event
-  await expect(page.getByTestId("robot-architect")).not.toHaveAttribute("data-state", "waiting", { timeout: 120_000 });
+  await expect(page.getByTestId("role-architect")).not.toHaveAttribute("data-state", "pending", { timeout: 120_000 });
   await expect(page.getByRole("button", { name: "Open the result" })).toBeVisible({ timeout: 14 * 60_000 });
   const outcome = page.getByText(/is verified|is validated but not verified|failed validation/);
   await expect(outcome).toBeVisible();

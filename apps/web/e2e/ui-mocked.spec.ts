@@ -3,6 +3,7 @@
  * responsive layout, export restrictions). They do NOT prove generation works: see real*.spec.ts for that.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { pane } from "./panes";
 
 const STAGES = ["analyze", "specify", "plan", "generate_files", "static_validation", "test_generation", "sandbox_tests", "evaluate", "report", "package"];
 
@@ -50,32 +51,38 @@ async function mockApi(page: Page, outcome: "verified" | "validation_failed" | "
     if (p.includes("/install/")) return json({ zip: "x.zip", version: "0.1.0", status: "verified", note: "cannot confirm", target: { label: "Claude Code", notes: "n" },
       install: { bash: "echo install", powershell: "echo install" }, replace: { bash: "mv", powershell: "Rename-Item", warning: "w" } });
     if (p === "/studio/skills" || p === "/studio/api-keys") return json([]);
+    if (p === "/studio/jobs") return json([]);
     return json({ detail: `unmocked ${p}` }, 404);
   });
 }
 
-test("first visit explains the product and offers templates", async ({ page }) => {
+test("first visit: one clear request box, samples, empty result pane", async ({ page }) => {
   await mockApi(page, "verified");
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Build AI agents you can actually trust" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What should your Skill do?" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create agent" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Laravel bug finder" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Laravel bug finder/ })).toBeVisible();
+  await pane(page, "Result");
+  await expect(page.getByText("No Skill selected")).toBeVisible();
 });
 
-test("form validation, progress, result tabs and export of a verified Skill", async ({ page }) => {
+test("form validation, live pipeline, result workspace and export of a verified Skill", async ({ page }) => {
   await mockApi(page, "verified");
   await page.goto("/");
   const input = page.getByLabel("Describe the agent you want");
   await input.fill("short");
   await expect(page.getByText("Write at least 10 characters.")).toBeVisible();
-  await page.getByRole("button", { name: "Laravel bug finder" }).click();
+  await page.getByRole("button", { name: /^Laravel bug finder/ }).click();
   await page.getByRole("button", { name: "Create agent" }).click();
-  await expect(page.getByText("Now: generate_files")).toBeVisible();              // loading/progress state
-  await expect(page.getByTestId("robot-coder")).toHaveAttribute("data-state", /working|idle/);
+  await expect(page.getByText(/Now · Developer/)).toBeVisible();                    // only while the backend reports a running stage
+  await expect(page.getByTestId("role-coder")).toHaveAttribute("data-state", "running");
+  await expect(page.getByTestId("role-coder")).toHaveAttribute("data-state", "passed");
   await page.getByRole("button", { name: "Open the result" }).click();
+  await page.getByRole("button", { name: "SKILL.md" }).click();
   await expect(page.getByLabel("file preview")).toContainText("name: laravel-bug-finder");
   await page.getByRole("tab", { name: "Manifest" }).click();
   await expect(page.getByText("Permissions")).toBeVisible();
+  await page.getByRole("tab", { name: /Repairs/ }).click();
   await page.getByRole("tab", { name: "Export" }).click();
   await expect(page.getByRole("link", { name: "Download ZIP" })).toHaveAttribute("href", "/api/studio/versions/vv/export/claude-code");
 });
@@ -83,7 +90,7 @@ test("form validation, progress, result tabs and export of a verified Skill", as
 test("a failed Skill explains the failure and cannot be exported", async ({ page }) => {
   await mockApi(page, "validation_failed");
   await page.goto("/");
-  await page.getByRole("button", { name: "Laravel bug finder" }).click();
+  await page.getByRole("button", { name: /^Laravel bug finder/ }).click();
   await page.getByRole("button", { name: "Create agent" }).click();
   await expect(page.getByText(/failed validation, so it cannot be exported/)).toBeVisible();
   await page.getByRole("button", { name: "Open the result" }).click();
@@ -91,14 +98,14 @@ test("a failed Skill explains the failure and cannot be exported", async ({ page
   await expect(page.getByText(/The Skill cannot run external programs/)).toBeVisible();
   await expect(page.getByText(/static validation failed first, so the code was never executed/)).toBeVisible();
   await page.getByRole("tab", { name: "Export" }).click();
-  await expect(page.getByRole("alert")).toContainText("cannot be exported");
+  await expect(page.getByRole("alert").filter({ hasText: "cannot be exported" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Download ZIP" })).toHaveCount(0);
 });
 
 test("a backend error is shown, not hidden", async ({ page }) => {
   await mockApi(page, "start-error");
   await page.goto("/");
-  await page.getByRole("button", { name: "Laravel bug finder" }).click();
+  await page.getByRole("button", { name: /^Laravel bug finder/ }).click();
   await page.getByRole("button", { name: "Create agent" }).click();
   await expect(page.getByRole("alert")).toContainText("Ollama unreachable");
 });
@@ -118,9 +125,11 @@ test("keyboard: skip link, focus on the request, Ctrl+Enter submits", async ({ p
 test("Japanese interface", async ({ page }) => {
   await mockApi(page, "verified");
   await page.goto("/");
+  await pane(page, "Skills");
   await page.getByRole("button", { name: "日本語" }).click();
-  await expect(page.getByRole("heading", { name: "信頼できる AI エージェントを、言葉から。" })).toBeVisible();
-  await expect(page.locator("main")).toHaveAttribute("lang", "ja");
+  await pane(page, "作成");
+  await expect(page.getByRole("heading", { name: "Skill に何をさせますか？" })).toBeVisible();
+  await expect(page.locator("div[lang]").first()).toHaveAttribute("lang", "ja");
 });
 
 test("no horizontal overflow and no console errors", async ({ page }) => {
