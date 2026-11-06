@@ -188,6 +188,8 @@ def one(factory, provider, difficulty, task_id, prompt) -> dict:
             "seconds_validation_last_round": round(sum(v_ for k, v_ in stage_ms.items() if k in VALIDATION_STAGES) / 1000, 1),
             "job_status": job.status, "status": v.status if v else None,
             "first_failure": first_failure(job, run),
+            "failure_category": (("generation_timeout" if "timed out" in (job.error or "") else "generation_error")
+                                 if job.status == "failed" else run.report.get("failure_category") if run else None),
             "repair_rounds": run.report.get("repair_rounds") if run else None,
             "tests_rewritten_in_repair": run.report.get("tests_rewritten_in_repair") if run else None,
             "tests": f"{run.tests_passed}/{run.tests_total}" if run else None,
