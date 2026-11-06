@@ -331,12 +331,15 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
         rounds = rnd
         label = f"round {rnd + 1}/{max_rounds + 1}" if m.kind == "code" else ""
         t.start("static_validation", label)
-        if m.kind == "code":
-            t.start("sandbox_tests", label)  # full_validation runs static checks, then the sandbox
-        status, report = full_validation(files, provider.name)
-        st = report["static"]
-        t.done("static_validation", "passed" if st["failed"] == 0 else "failed",
-               f"{label}: {st['passed']} passed, {st['failed']} failed".strip(": "))
+
+        def static_finished(st: dict, label: str = label) -> None:
+            # reviewer hands over to the tester only when static checks are really done
+            t.done("static_validation", "passed" if st["failed"] == 0 else "failed",
+                   f"{label}: {st['passed']} passed, {st['failed']} failed".strip(": "))
+            if m.kind == "code" and st["failed"] == 0:
+                t.start("sandbox_tests", label)
+
+        status, report = full_validation(files, provider.name, on_static=static_finished)
         if m.kind == "code":
             sbx, summ = report["sandbox"], report["summary"]
             if sbx["status"] == "ran":

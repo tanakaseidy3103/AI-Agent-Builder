@@ -83,6 +83,23 @@ def test_events_mirror_real_stages(factory, fake, sbx):
     assert evs[-1].agent_id == "packager" and evs[-1].state == "completed"
 
 
+def test_tester_starts_only_after_the_reviewer_finished(factory, fake, sbx):
+    # Agent Office derives who is working from these events: two roles must never look active at once
+    bad = fenced("import subprocess\ndef run(d):\n    return {}\n")
+    fake.responses = [SPEC_CODE, {"cases": CASES}, bad, fenced(CODE_TEST), fenced(CODE_SCRIPT) + fenced(CODE_TEST)]
+    job, v = _run(factory, fake)
+    assert v.status == "verified"
+    with factory() as s:
+        msgs = [e.message for e in s.query(AgentEventRow).filter_by(run_id=job.id).order_by(AgentEventRow.id)]
+    r1 = [m for m in msgs if "round 1/" in m]
+    assert r1[0].startswith("static_validation: started") and r1[1].startswith("static_validation: failed")
+    assert not any(m.startswith("sandbox_tests: started (round 1/") for m in msgs)  # failed review: tester never started
+    r2 = [m for m in msgs if "round 2/" in m]
+    assert [m.split(" (")[0].split(" —")[0] for m in r2[:3]] == ["static_validation: started", "static_validation: passed", "sandbox_tests: started"]
+    assert msgs[msgs.index(r1[1]) + 1].startswith("sandbox_tests: skipped")
+    assert "generate_files: started (repair 1)" in msgs
+
+
 def test_instruction_skill_has_no_code_and_is_only_validated(factory, fake, sbx):
     fake.responses = [SPEC_INSTR]
     job, v = _run(factory, fake, "Write commit messages from diffs please")

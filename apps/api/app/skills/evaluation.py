@@ -70,10 +70,13 @@ def failure_category(report: dict) -> str:
     return "eval_failure"
 
 
-def full_validation(files: dict[str, str], model: str | None = None) -> tuple[str, dict]:
+def full_validation(files: dict[str, str], model: str | None = None, on_static=None) -> tuple[str, dict]:
+    """on_static(static_summary) is called once static checks finish, before any sandbox run (progress events)."""
     t0 = time.monotonic()
     checks, manifest = validate_package(files)
     static = summarize(checks)
+    if on_static:
+        on_static(static)
     report = {"model": model, "static": static, "tests": [], "evals": [],
               "sandbox": {"status": "not_run"}, "criteria": []}
     crit = report["criteria"]
