@@ -38,6 +38,7 @@ const events = [
   { id: 1, agent_id: "architect", run_id: "j1", state: "planning", message: "analyze: started", at: "2026-11-06T08:00:00Z" },
   { id: 2, agent_id: "architect", run_id: "j1", state: "idle", message: "plan: passed", at: "2026-11-06T08:00:05Z" },
   { id: 3, agent_id: "tester", run_id: "j1", state: "failed", message: "sandbox_tests: failed — 1/3 tests passed", at: "2026-11-06T08:00:09Z" },
+  { id: 4, agent_id: "coder", run_id: "j1", state: "working", message: "generate_files: started (repair 1)", at: "2026-11-06T08:00:10Z" },
 ];
 
 function router(url: string, init?: RequestInit) {
@@ -100,12 +101,16 @@ it("first-time user: hero, templates, chat flow, real-event robots, result tabs 
   // robots reflect the latest persisted event per role; roles without events stay 'waiting'
   expect(screen.getByTestId("robot-architect").dataset.state).toBe("idle");
   expect(screen.getByTestId("robot-tester").dataset.state).toBe("failed");
-  expect(screen.getByTestId("robot-coder").dataset.state).toBe("waiting");
+  expect(screen.getByTestId("robot-coder").dataset.state).toBe("working");
+  expect(within(screen.getByTestId("robot-coder")).getByText("1 repair round(s)")).toBeTruthy();
+  expect(screen.getByTestId("robot-reviewer").dataset.state).toBe("waiting");
   expect(screen.getByText("sandbox_tests: failed — 1/3 tests passed")).toBeTruthy();
   expect(screen.getByText(/Planned \(not implemented yet\)/)).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Open the result" }));
   expect(await screen.findByText(/name: react-perf/)).toBeTruthy();
+  const ladder = within(screen.getByLabelText("Evidence")).getAllByRole("listitem");
+  expect(ladder.map((li) => li.dataset.reached)).toEqual(["true", "true", "true", "true"]);
   fireEvent.click(screen.getByRole("tab", { name: "Validation" }));
   expect(screen.getByText("hidden holdout")).toBeTruthy();
   expect(screen.getByText(/ran · 800 ms · no network · 256 MB/)).toBeTruthy();
@@ -121,6 +126,8 @@ it("explains a policy failure, why the sandbox did not run, and blocks export", 
   expect(screen.getByText(/failed validation, so it cannot be exported/)).toBeTruthy();
   expect(screen.getByText(/used something the sandbox never allows/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Open the result" }));
+  const ladder = within(await screen.findByLabelText("Evidence")).getAllByRole("listitem");
+  expect(ladder.map((li) => li.dataset.reached)).toEqual(["true", "false", "false", "false"]);
   fireEvent.click(await screen.findByRole("tab", { name: "Validation" }));
   expect(screen.getByText(/The Skill cannot run external programs or linters/)).toBeTruthy();
   expect(screen.getByText(/static validation failed first, so the code was never executed/)).toBeTruthy();
