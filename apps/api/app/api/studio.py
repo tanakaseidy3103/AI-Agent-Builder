@@ -4,10 +4,11 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import hash_key, new_key, require_local
+from app.config import settings
 from app.db import get_session, get_session_factory
 from app.llm import LLMProvider, get_provider
 from app.llm import LLMError
@@ -80,6 +81,11 @@ def generate(body: GenerateIn, bg: BackgroundTasks, s: Session = Depends(get_ses
              provider: LLMProvider = Depends(get_provider)) -> dict:
     if body.spec is not None:
         _plan_preview(body.spec)  # reject an invalid edited plan before queueing
+    running = s.scalar(select(func.count()).select_from(GenerationJob).where(GenerationJob.status.in_(("draft", "generating"))))
+    if running >= settings.max_concurrent_generations:
+        # every job holds the local model/GPU for minutes; unbounded queueing exhausts the machine
+        raise HTTPException(429, f"{running} generation(s) already running; try again when one finishes",
+                            headers={"Retry-After": "30"})
     job = GenerationJob(prompt=body.prompt.strip(), requested_kind=None if body.kind == "auto" else body.kind,
                         approved_spec=body.spec)
     s.add(job)

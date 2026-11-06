@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "[::1]", "testserver"]
     max_run_input_bytes: int = 1_000_000
     max_repair_rounds: int = 3
+    max_concurrent_generations: int = 2
 
 
 settings = Settings()
