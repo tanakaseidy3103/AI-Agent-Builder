@@ -316,3 +316,12 @@ def test_tests_are_written_from_the_spec_without_seeing_the_code_or_holdout(fact
     assert "re.search" not in tests_prompt                                 # implementation details absent
     assert "App.tsx" in tests_prompt and "B.tsx" not in tests_prompt       # visible inputs yes, holdout no
     assert "SPECIFICATION" in fake.calls[3][0]
+
+
+def test_generated_readme_explains_install_run_and_shows_a_visible_example(factory, fake, sbx):
+    fake.responses = [SPEC_CODE, {"cases": HOLDOUT_CASES}, fenced(CODE_SCRIPT), fenced(CODE_TEST)]
+    _, v = _run(factory, fake)
+    readme = storage.read_package(v.storage_key)["README.md"]
+    assert "## Install" in readme and "~/.claude/skills/" in readme
+    assert "python scripts/cli.py --dir ./my-project" in readme
+    assert "App.tsx" in readme and "B.tsx" not in readme  # example from a visible case, never the holdout
