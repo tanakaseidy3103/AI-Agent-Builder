@@ -261,6 +261,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", nargs="+", default=[settings.llm_model])
     ap.add_argument("--attempts", type=int, default=3)
+    ap.add_argument("--resume", metavar="STAMP", help="continue an incomplete run; refuses if the code commit changed")
     args = ap.parse_args()
     tmp = Path(tempfile.mkdtemp(prefix="aab-bench-"))
     settings.storage_dir = tmp / "data"
@@ -268,30 +269,51 @@ def main():
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     OUT.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    m = meta(args.models, args.attempts)
-    rows: list[dict] = []
+    if args.resume:
+        stamp, m, rows = load_for_resume(args.resume, _cmd(["git", "-C", str(ROOT), "rev-parse", "HEAD"]))
+    else:
+        stamp, m, rows = datetime.now(UTC).strftime("%Y%m%d-%H%M%S"), meta(args.models, args.attempts), []
+    m["complete"] = False  # stays false in the file until the last run is written
     with keep_awake() as awake, SuspendWatch() as watch:
         m["sleep_prevented"] = awake
         run_all(args, m, stamp, factory, rows, watch)
+    m["complete"] = True
+    write(stamp, m, rows, args.models)
     print(f"wrote {OUT / stamp}.json/.md", flush=True)
 
 
-def run_all(args, m: dict, stamp: str, factory, rows: list[dict], watch: SuspendWatch) -> None:
-    for model in args.models:
-        for a in range(args.attempts):  # attempt-major order: a late crash still covers every task
-            # independent sample per attempt: a fixed seed made baseline 20261105-121419 repeat identical outputs
-            provider = OllamaProvider(settings.ollama_base_url, model, seed=attempt_seed(a))
+def load_for_resume(stamp: str, head: str) -> tuple[str, dict, list[dict]]:
+    data = json.loads((OUT / f"{stamp}.json").read_text(encoding="utf-8"))
+    if data["meta"].get("git_commit") != head:
+        raise SystemExit(f"refusing to resume {stamp}: recorded with commit {data['meta'].get('git_commit', '?')[:7]}, "
+                         f"HEAD is {head[:7]}; mixing compiler versions would invalidate the comparison")
+    data["meta"].setdefault("resumed_utc", []).append(datetime.now(UTC).isoformat(timespec="seconds"))
+    return stamp, data["meta"], data["runs"]
+
+
+def pending(models_: list[str], attempts: int, rows: list[dict]):
+    done = {(r["model"], r["task"], r["attempt"]) for r in rows}
+    for model in models_:
+        for a in range(attempts):
             for d, tid, prompt in TASKS:
-                t0 = time.time()
-                r = one(factory, provider, d, tid, prompt)
-                r["attempt"], r["seed"] = a + 1, provider.options["seed"]
-                r["host_suspended_s"] = round(watch.suspended_between(t0, time.time()), 1)
-                r["timing_valid"] = r["host_suspended_s"] == 0
-                rows.append(r)
-                write(stamp, m, rows, args.models)
-                print(f"{model:22} #{a + 1} {tid:16} {r['status'] or r['job_status']:18} {r['seconds_total']:7}s "
-                      f"repairs={r['repair_rounds']} tests={r['tests']} evals={r['evals']} {r['first_failure']}", flush=True)
+                if (f"ollama:{model}", tid, a + 1) not in done:
+                    yield model, a, d, tid, prompt
+
+
+def run_all(args, m: dict, stamp: str, factory, rows: list[dict], watch: SuspendWatch) -> None:
+    # attempt-major order: a late crash still covers every task; resumed runs skip what is already recorded
+    for model, a, d, tid, prompt in list(pending(args.models, args.attempts, rows)):
+        # independent sample per attempt: a fixed seed made baseline 20261105-121419 repeat identical outputs
+        provider = OllamaProvider(settings.ollama_base_url, model, seed=attempt_seed(a))
+        t0 = time.time()
+        r = one(factory, provider, d, tid, prompt)
+        r["attempt"], r["seed"] = a + 1, provider.options["seed"]
+        r["host_suspended_s"] = round(watch.suspended_between(t0, time.time()), 1)
+        r["timing_valid"] = r["host_suspended_s"] == 0
+        rows.append(r)
+        write(stamp, m, rows, args.models)
+        print(f"{model:22} #{a + 1} {tid:16} {r['status'] or r['job_status']:18} {r['seconds_total']:7}s "
+              f"repairs={r['repair_rounds']} tests={r['tests']} evals={r['evals']} {r['first_failure']}", flush=True)
 
 
 if __name__ == "__main__":
