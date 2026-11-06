@@ -50,3 +50,18 @@ App externo ─SDK─▶ /v1 (API key, rate limit) ─▶ sandbox (code) | LLM (
 - Avaliações priorizam checagens determinísticas; LLM-judge nunca é a nota final sozinho.
 - Contratos compartilhados ficam em `packages/contracts` e têm teste de sincronia nos dois lados.
 - Isolamento por usuário/projeto: obrigatório quando contas forem implementadas (ainda não existem).
+
+## Frontend: Agent Studio (2026-11-06)
+
+```
+App (nav: Create · Skills · API keys, EN/JA via src/i18n.tsx)
+ ├─ AgentStudio      chat request → POST /studio/skills/generate; polls GET /studio/jobs/{id}
+ │   ├─ AgentOffice  polls GET /studio/events?run_id=… (persisted AgentEventRow, one per real stage transition);
+ │   │               one SVG robot per pipeline role: architect=Planner, coder=Developer, reviewer=Reviewer,
+ │   │               tester=Tester, packager=Builder. Planned roles (Researcher, Security) are labelled, never animated.
+ │   └─ VersionView  Files · Manifest · Validation (hints, criteria, eval cases, holdout, why the sandbox did not run) · Export
+ └─ SkillsPage / ApiKeys
+```
+
+Polling of persisted events was chosen over the WebSocket endpoint: it survives reconnects and restarts and needs no
+extra state. No 3D library is used; animations respect `prefers-reduced-motion`.
