@@ -20,7 +20,21 @@ These numbers describe **LLM-generated** Skills only. The human-written referenc
 | File | Compiler | Notes |
 |---|---|---|
 | `20261105-121419` | before Phase 1 | **Baseline, kept as-is.** `seed=42` for every attempt, so the 3 attempts per task produced identical outputs. The effective sample is 1 per task per model (n=5 per model), not 15. Its `.md` Wilson intervals assume n=15 and overstate certainty. Result: 0/30 verified. |
-| (next) | after Phase 1 | per-attempt seeds; eval-case schema embeds the Skill input schema; repair gets input/expected/actual of failed evals |
+| `20261105-131812` | Phase 1, part A (`75eb00f`) | **Incomplete: 27/30.** The process ended with the Claude Code session. One run's duration (39 818 s) includes a laptop sleep. Kept as recorded. |
+| `20261106-075956` | Phase 1, part B (`f50f3d1`) | **Complete 30/30**, sleep prevented, no suspend detected. 0/30 verified. Analysis: `PHASE1_ANALYSIS.md`. |
+
+## Running
+
+```bash
+cd apps/api
+.venv/Scripts/python.exe -u scripts/benchmark_generation.py --models llama3.2:3b qwen2.5-coder:latest --attempts 3
+# continue an interrupted run (same code commit only):
+.venv/Scripts/python.exe -u scripts/benchmark_generation.py --models llama3.2:3b qwen2.5-coder:latest --attempts 3 --resume <stamp>
+```
+
+Each row records: model, task, difficulty, attempt, seed, LLM and validation seconds, total seconds, `timing_valid` /
+`host_suspended_s`, repair rounds and per-round history, tests, eval cases, status, `failure_category`,
+`first_failure`, `code_sha`. `meta.complete` stays `false` until the last run is written.
 
 ## Commit hashes in old files
 
