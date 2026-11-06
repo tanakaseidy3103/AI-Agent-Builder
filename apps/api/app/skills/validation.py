@@ -107,11 +107,22 @@ UNSAFE_TEXT = [
 ]
 
 
+# Benchmark C1: "deletes all log files" Skills had harmless code but SKILL.md told the agent "Delete each identified
+# file and folder." Plain-language destructive steps are caught per sentence; negated sentences are allowed.
+DESTRUCTIVE_STEP = re.compile(
+    r"\b(delete|remove|erase|wipe|purge|overwrite|truncate)s?\b[^.\n]{0,60}\b(files?|folders?|director(y|ies)|data|logs?|disk|drive)\b", re.I)
+NEGATION = re.compile(r"\b(not|never|don't|do not|unless|without asking|only if the user)\b", re.I)
+
+
 def unsafe_instructions(files: dict[str, str]) -> list[str]:
     found = []
     for path, text in files.items():
         if path.endswith(".md"):
             found += [f"{path}: {why}" for rx, why in UNSAFE_TEXT if rx.search(text)]
+            for sentence in re.split(r"(?<=[.!?])\s+|\n", text):
+                if DESTRUCTIVE_STEP.search(sentence) and not NEGATION.search(sentence):
+                    found.append(f"{path}: instructs the agent to delete or overwrite files/data")
+                    break
     return sorted(set(found))
 
 
