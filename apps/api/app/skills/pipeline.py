@@ -57,14 +57,19 @@ SPEC_SCHEMA = {
     },
     "required": ["name", "description", "kind", "instructions", "input_schema", "output_schema"],
 }
-def cases_schema(input_schema: dict) -> dict:
+def cases_schema(input_schema: dict, output_schema: dict | None = None) -> dict:
     """Structured-output schema for eval cases. Embeds the Skill's real input_schema so constrained decoding
-    cannot emit inputs of the wrong shape (benchmark 20261105-121419: 10/15 llama failures were e.g. files as a list)."""
+    cannot emit inputs of the wrong shape (benchmark 20261105-121419: 10/15 llama failures were e.g. files as a list),
+    and shapes expect.contains like a subset of the output (benchmark 20261106-075956: 5/30 runs wrote a single
+    finding object where the output is {findings: [...]})."""
+    props = (output_schema or {}).get("properties")
+    contains = ({"type": "object", "properties": props, "additionalProperties": False}  # subset: nothing required
+                if isinstance(props, dict) and props else {"type": "object"})
     return {
         "type": "object",
         "properties": {"cases": {"type": "array", "minItems": MIN_EVAL_CASES + 1, "items": {
             "type": "object", "properties": {"name": {"type": "string"}, "input": input_schema,
-                                             "expect": {"type": "object", "properties": {"contains": {"type": "object"}},
+                                             "expect": {"type": "object", "properties": {"contains": contains},
                                                         "required": ["contains"]}},
             "required": ["name", "input", "expect"]}}},
         "required": ["cases"],
@@ -267,7 +272,7 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
     if m.kind == "code":
         # cases first, from the spec only; the code model then sees example INPUTS (never expectations)
         try:
-            cases = provider.complete_json(CASES_SYSTEM, ctx, cases_schema(m.input_schema)).get("cases", [])
+            cases = provider.complete_json(CASES_SYSTEM, ctx, cases_schema(m.input_schema, m.output_schema)).get("cases", [])
         except LLMError as e:
             cases = []  # validation will report missing eval cases; keep the honest failure visible
             t._set("generate_files", detail=f"eval cases not generated: {e}")
