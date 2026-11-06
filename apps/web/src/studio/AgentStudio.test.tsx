@@ -124,6 +124,9 @@ it("explains a policy failure, why the sandbox did not run, and blocks export", 
   renderStudio();
   await createFromTemplate();
   expect(screen.getByText(/failed validation, so it cannot be exported/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Refine (add a correction)" }));
+  const box = screen.getByLabelText("Describe the agent you want") as HTMLTextAreaElement;
+  expect(box.value).toMatch(/Laravel[\s\S]*Correction: $/);
   expect(screen.getByText(/used something the sandbox never allows/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Open the result" }));
   const ladder = within(await screen.findByLabelText("Evidence")).getAllByRole("listitem");
