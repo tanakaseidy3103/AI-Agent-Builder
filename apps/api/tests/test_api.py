@@ -211,3 +211,9 @@ def test_revalidation_during_sandbox_outage_keeps_verified(client, code_version,
     assert r.status_code == 503 and "status unchanged: verified" in r.json()["detail"]
     assert client.get(f"/studio/versions/{code_version}").json()["status"] == "verified"
     assert client.get("/v1/skills/react-performance-analyzer", headers={"Authorization": f"Bearer {api_key}"}).status_code == 200
+
+
+@pytest.mark.parametrize("host,code", [("localhost:5173", 200), ("127.0.0.1:8000", 200), ("evil.example", 400),
+                                       ("127.0.0.1.evil.example", 400)])
+def test_dns_rebinding_hosts_are_rejected(client, host, code):
+    assert client.get("/studio/skills", headers={"Host": host}).status_code == code
