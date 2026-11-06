@@ -64,7 +64,7 @@ GOLDEN = {
     "project-docs": {"kind": "files", "payload": {
         "package.json": '{"name": "shop", "scripts": {"lint:fix": "eslint --fix .", "test": "vitest"}}',
         "app/main.py": "print('hi')\n", "app/util.py": "X = 1\n", "tests/test_main.py": "def test_x():\n    assert True\n"},
-        "tokens": ["lint:fix", "tests"]},
+        "values": ["lint:fix", "tests"]},  # exact key/value: C1's token check accepted a mangled script string
     "python-analyzer": {"kind": "files", "payload": {
         "svc.py": "import os\n\ndef f():\n    try:\n        return 1\n    except:\n        return 0\n"},
         "record": ["svc.py", 6]},          # bare except on line 6
@@ -96,6 +96,15 @@ def _match(value, want) -> bool:
     return isinstance(value, str) and (value == want or value.endswith(want) or value.endswith("/" + want))
 
 
+def has_value(output, want: str) -> bool:
+    """True if `want` is a dict key or a whole string value (trailing '/' ignored) anywhere in the output."""
+    if isinstance(output, dict):
+        return want in output or any(has_value(v, want) for v in output.values())
+    if isinstance(output, list):
+        return any(has_value(v, want) for v in output)
+    return isinstance(output, str) and output.rstrip("/") == want
+
+
 def has_record(output, required: list) -> bool:
     """True if some dict anywhere in the output holds a value matching every required item."""
     if isinstance(output, dict):
@@ -122,7 +131,7 @@ def real_execution(task_id: str, v) -> dict | None:
     if out is None:
         return {"ran": False, "error": r.error or r.data.get("error"), "correct": False}
     schema_errors = schema_validate(v.manifest.get("output_schema", {}), out)
-    correct = has_record(out, g["record"]) if "record" in g else all(t in json.dumps(out) for t in g["tokens"])
+    correct = has_record(out, g["record"]) if "record" in g else all(has_value(out, w) for w in g["values"])
     return {"ran": True, "schema_ok": not schema_errors, "correct": bool(correct), "output_excerpt": json.dumps(out)[:300]}
 LLM_STAGES = {"analyze", "generate_files", "test_generation"}
 VALIDATION_STAGES = {"static_validation", "sandbox_tests", "evaluate"}
