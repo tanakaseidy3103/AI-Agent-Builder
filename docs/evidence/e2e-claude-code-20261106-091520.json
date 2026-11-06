@@ -1,0 +1,31 @@
+{
+  "target": "claude-code",
+  "skill": "python-code-analyzer",
+  "installed_at": ".claude\\skills\\python-code-analyzer",
+  "exit_code": 0,
+  "stderr_tail": "",
+  "skill_loaded": true,
+  "script_ran": true,
+  "findings_reported": {
+    "mutable-default": true,
+    "bare-except": true,
+    "unused-import": true
+  },
+  "passed": true,
+  "final_answer": "All 4 findings are in `app/billing.py`, ordered by severity:\n\n| Location | Rule | Fix |\n|---|---|---|\n| `billing.py:8` | `bare-except` | Replace `except:` with `except Exception:` (or the specific error type). Bare `except` swallows `KeyboardInterrupt` and `SystemExit`. |\n| `billing.py:5` | `mutable-default` | Change `def charge(metadata={})` to `def charge(metadata=None)` and open the function with `if metadata is None: metadata = {}`. The default dict is shared across all calls. |\n| `billing.py:1` | `unused-import` | Remove `import json` — nothing in the file uses it. |\n| `billing.py:5` | `missing-docstring` | Add a docstring to `charge` explaining its parameters and return value. |\n\nThe two highest-risk issues are `bare-except` (can silently eat process signals) and `mutable-default` (shared state across calls — classic source of billing bugs where previous metadata leaks into new charges).\n\n---\nSkipped: did not look at callers outside `app/` or check whether the `json` import was recently removed (could be a mid-refactor). Risk: if a caller passes `metadata` and relies on mutation persisting, fixing the mutable default is a behaviour change.",
+  "tool_calls": [
+    {
+      "name": "Skill",
+      "input": {
+        "skill": "python-code-analyzer"
+      }
+    },
+    {
+      "name": "Bash",
+      "input": {
+        "command": "python \"~\\AppData\\Local\\Temp\\aab-e2e-claude-code-72t6ymom\\.claude\\skills\\python-code-analyzer\\scripts\\cli.py\" --dir \"~\\AppData\\Local\\Temp\\aab-e2e-claude-code-72t6ymom\\app\"",
+        "description": "Run Python code analyzer on app/ folder"
+      }
+    }
+  ]
+}
