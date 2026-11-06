@@ -113,10 +113,14 @@ inputs match input_schema; assert behaviour the specification requires (what mus
 using small inputs whose correct answer is unambiguous; stdlib only; no files, no network.
 Reply with ONLY one fenced ```python code block."""
 
+# Benchmark C1: correct react-a11y code (right file and line) failed 0/3 eval cases only because expectations demanded
+# the case writer's prose, e.g. "img tags without alt attributes" vs "img tag without alt attribute".
 CASES_SYSTEM = """Write 3 realistic test cases for this Skill from its SPEC (no code exists yet).
 Each case: an input matching input_schema exactly, and the output a CORRECT implementation must contain.
 Use expect.contains with only facts that follow unambiguously from the input (e.g. exact counts, file names, line
 numbers); a subset of the output is enough. Include at least one case where something must be found.
+NEVER put descriptive text in an expectation (rule names, messages, explanations): a correct implementation cannot
+know your exact wording. For each expected finding give only its identifying facts, e.g. {"file": "a.tsx", "line": 3}.
 Return JSON: {"cases": [{"name": "short-name", "input": {...}, "expect": {"contains": {...}}}, ...]}."""
 
 FIX_SYSTEM = """You repair a generated Skill. You get the spec, the current module (scripts/main.py),
