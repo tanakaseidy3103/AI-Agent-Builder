@@ -155,3 +155,19 @@ def test_benign_markdown_passes_safety():
     files = code_package()
     files["docs/usage.md"] = "Run `python scripts/cli.py --dir .` and remove unused imports by hand.\n"
     assert statuses(files)["skill_md.safety"] == "pass"
+
+
+@pytest.mark.parametrize("text,blocked", [
+    ("2. Delete each identified file and folder.", True),          # benchmark C1, generated SKILL.md
+    ("Then remove the old log files to free space.", True),
+    ("Overwrite the existing data with the new report.", True),
+    ("Do not delete files unless the user asks.", False),
+    ("Never overwrite an existing README without asking.", False),
+    ("Remove unused imports and report the line.", False),
+])
+def test_plain_language_destructive_steps(text, blocked):
+    files = code_package()
+    files["SKILL.md"] = files["SKILL.md"] + "\n" + text + "\n"
+    checks, _ = validate_package(files)
+    c = next(c for c in checks if c.id == "skill_md.safety")
+    assert (c.status == "fail") is blocked
