@@ -54,7 +54,7 @@ function StudioInner({ draft }: { draft?: Draft }) {
   const show = (p: Pane) => (pane === p ? "flex" : "hidden");
 
   return (
-    <div className="flex h-full min-h-0 flex-col lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,36%)]">
+    <div className="flex h-full min-h-0 flex-col lg:grid lg:grid-cols-[minmax(0,38%)_minmax(0,1fr)]">
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line bg-panel px-2 lg:hidden" role="group" aria-label={t("ws.panes")}>
         {(["session", "result"] as Pane[]).map((p) => (
           <button key={p} type="button" aria-pressed={pane === p} onClick={() => setPane(p)}
@@ -66,7 +66,6 @@ function StudioInner({ draft }: { draft?: Draft }) {
       </div>
 
       <section aria-label={t("nav.studio")} className={`${show("session")} min-h-0 flex-1 flex-col lg:flex`}>
-        <OfficeStage job={job} selected={job && rightView === "agent" ? role : null} onSelect={selectAgent} awaitingApproval={awaitingApproval} />
         <div className="min-h-0 flex-1">
           <Session requests={requests} openId={openId} onOpen={open} draft={draft} onAwaitingApproval={setAwaitingApproval}
             onSubmit={(r) => { setRequests((rs) => [...rs, r]); setPicked(null); setView("agent"); }} />
@@ -74,6 +73,7 @@ function StudioInner({ draft }: { draft?: Draft }) {
       </section>
 
       <aside aria-label={t("ws.pane.result")} className={`${show("result")} min-h-0 flex-1 flex-col border-line bg-panel lg:flex lg:border-l`}>
+        <OfficeStage job={job} selected={job && rightView === "agent" ? role : null} onSelect={selectAgent} awaitingApproval={awaitingApproval} />
         <StudioBot job={job} state={botState(job, version.data?.status)} versionStatus={version.data?.status} awaitingApproval={awaitingApproval} />
         {job && (
           <div role="tablist" aria-label={t("ws.panes")} className="flex shrink-0 gap-1 border-b border-line px-3 py-2">

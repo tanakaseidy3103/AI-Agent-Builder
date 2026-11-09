@@ -6,7 +6,6 @@ import { useLang, useT, type Key } from "../i18n";
 import { useJob } from "./hooks";
 import { Pencil, Retry, Send, Spark } from "./icons";
 import { Button, ErrorNote, StatusPill, field, sectionTitle } from "./kit";
-import { ActivityStream } from "./Office";
 import { PlanReview, type PlanOut } from "./PlanReview";
 import { UseAgent } from "./UseAgent";
 import { JOURNEY } from "./agents";
@@ -76,23 +75,26 @@ export function Session({ requests, onSubmit, onOpen, openId, draft, onAwaitingA
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6">
           {requests.length === 0 && (
-            <section className="space-y-5 pt-4 sm:pt-10">
+            <section className="space-y-6 pt-6 sm:pt-14">
               <div className="space-y-2">
                 <p className="flex items-center gap-1.5 text-xs font-medium text-accent-ink"><Spark size={13} />{t("ws.kicker")}</p>
                 <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">{t("ws.title")}</h1>
                 <p className="max-w-2xl text-sm leading-relaxed text-mute">{t("ws.body")}</p>
               </div>
-              <ol className="flex flex-wrap items-center gap-1 text-[11.5px] text-mute" aria-label={t("flow.title")}>
-                {JOURNEY.map((j) => `journey.${j}` as Key).map((k, i, a) => (
-                  <li key={k} className="flex items-center gap-1"><span className="rounded border border-line px-1.5 py-0.5">{t(k)}</span>{i < a.length - 1 && <span aria-hidden="true" className="text-faint">›</span>}</li>
+              <div className="grid gap-3 sm:grid-cols-3" aria-label={t("flow.title")}>
+                {([["hero.step1", "1"], ["hero.step2", "2"], ["hero.step3", "3"]] as [Key, string][]).map(([k, n]) => (
+                  <div key={k} className="flex items-start gap-2.5 rounded-lg border border-line bg-panel px-3.5 py-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-[11px] font-bold text-accent-ink">{n}</span>
+                    <span className="text-[12.5px] leading-snug text-ink">{t(k)}</span>
+                  </div>
                 ))}
-              </ol>
+              </div>
               <div>
                 <p className={`${sectionTitle} mb-2`}>{t("hero.templates")}</p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {SAMPLES[lang].map((x) => (
                     <button key={x.title} type="button" onClick={() => { setPrompt(x.prompt); inputRef.current?.focus(); }}
-                      className="group rounded-md border border-line bg-panel px-3 py-2.5 text-left transition-colors hover:border-line-strong hover:bg-raised">
+                      className="group rounded-md border border-line bg-panel px-3 py-2.5 text-left transition-colors hover:border-accent/40 hover:bg-raised">
                       <span className="block text-[13px] font-medium text-ink">{x.title}</span>
                       <span className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-mute">{x.prompt}</span>
                     </button>
@@ -118,7 +120,7 @@ export function Session({ requests, onSubmit, onOpen, openId, draft, onAwaitingA
       <form className="border-t border-line bg-panel/80 backdrop-blur" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <div className="mx-auto w-full max-w-3xl space-y-2 px-4 py-3 sm:px-6">
           <label htmlFor="prompt" className="sr-only">{t("chat.label")}</label>
-          <div className="rounded-lg border border-line bg-canvas transition-colors focus-within:border-accent/60">
+          <div className="rounded-xl border border-line bg-canvas shadow-sm transition-colors focus-within:border-accent/60 focus-within:shadow-md">
             <textarea id="prompt" ref={inputRef} rows={3} value={prompt} placeholder={t("chat.placeholder")}
               aria-describedby={tooShort ? "prompt-hint" : "prompt-help"}
               onChange={(e) => setPrompt(e.target.value)}
@@ -194,12 +196,6 @@ function Turn({ req, onOpen, onRetry, onRefine, openId }: { req: Request; onOpen
                 <div key={s!.name} className="flex gap-3"><dt className="w-16 shrink-0 font-mono text-faint">{s!.name}</dt><dd className="break-words text-ink/85">{s!.detail}</dd></div>
               ))}
             </dl>
-          </section>
-        )}
-        {j && (
-          <section className="rounded-lg border border-line bg-panel px-4 py-3" aria-label={t("office.activity")}>
-            <h3 className={`${sectionTitle} mb-2.5`}>{t("office.activity")}</h3>
-            <ActivityStream job={j} />
           </section>
         )}
         {j?.status === "failed" && (

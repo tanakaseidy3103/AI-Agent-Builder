@@ -134,13 +134,9 @@ it("first-time user: intro, sample, live pipeline from real stages/events, resul
   await vi.waitFor(() => expect(screen.getByTestId("studio-bot").dataset.state).toBe("completed"));  // from the stored status
   expect(screen.getByTestId("studio-bot").dataset.verified).toBe("true");                             // only a verified run looks like a success
 
-  // Agent Office: states come from the job's stages; repair rounds, handoffs and the stream from persisted events
+  // Agent Office: states come from the job's stages; repair rounds visible in the pipeline header
   for (const r of ["architect", "coder", "reviewer", "tester", "packager"]) expect(screen.getByTestId(`role-${r}`).dataset.state).toBe("done");
   expect(screen.getAllByText(/1 repair round\(s\)/).length).toBeGreaterThan(0);
-  const stream = screen.getByRole("list", { name: "Live activity" });
-  expect([...stream.querySelectorAll(":scope > li")].map((li) => (li as HTMLElement).dataset.role)).toEqual(["architect", "tester", "coder"]);
-  expect(within(stream).getByText(/Sent back by Tester/)).toBeTruthy();         // why the developer was sent back
-  expect(within(stream).getAllByText(/1\/3 tests passed/)).toHaveLength(2); // the tester's result and the reason for the repair
 
   // the finished version opens in the result pane automatically
   expect(await screen.findByText(codeLine("def run(data): ..."))).toBeTruthy();       // code entrypoint preselected in the file explorer

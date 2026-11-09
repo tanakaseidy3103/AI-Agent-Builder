@@ -1,28 +1,28 @@
 @import "tailwindcss";
 
-/* Design tokens: deep neutral surfaces, one restrained indigo accent, semantic status colours. */
+/* Design tokens: clean white/slate surfaces, indigo accent, semantic status colours. */
 @theme {
-  --color-canvas: #0b0c0e;
-  --color-panel: #111215;
-  --color-raised: #17191c;
-  --color-hover: #1d2024;
-  --color-line: #24272c;
-  --color-line-strong: #33373e;
-  --color-ink: #e7e8eb;
-  --color-mute: #9ba0a9;
-  --color-faint: #878d96; /* 5.6:1 on panels (WCAG AA); was 3.6:1 */
-  --color-accent: #5b5fe0;
-  --color-accent-ink: #a9abff;
-  --color-ok: #4cc38a;
-  --color-warn: #e0a84a;
-  --color-bad: #f0707a;
-  --color-info: #6aa8f7;
+  --color-canvas: #ffffff;
+  --color-panel: #f8fafc;
+  --color-raised: #f1f5f9;
+  --color-hover: #e9ecf0;
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+  --color-ink: #0f172a;
+  --color-mute: #475569;   /* slate-600: 6.9:1 on white — WCAG AA */
+  --color-faint: #94a3b8;  /* slate-400: decorative use only (line numbers, separators) */
+  --color-accent: #4f46e5;
+  --color-accent-ink: #4338ca;
+  --color-ok: #16a34a;
+  --color-warn: #d97706;
+  --color-bad: #dc2626;
+  --color-info: #2563eb;
   --font-sans: "Inter", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", "Consolas", ui-monospace, monospace;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -33,7 +33,7 @@ body {
 }
 
 ::selection {
-  background: rgb(91 95 224 / 0.35);
+  background: rgb(79 70 229 / 0.18);
 }
 
 * {
