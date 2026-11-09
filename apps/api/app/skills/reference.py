@@ -18,8 +18,9 @@ REFERENCE_MODEL = "human (reference)"
 
 
 def load_reference(path: Path) -> dict[str, str]:
+    _SKIP = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git"}
     files = {p.relative_to(path).as_posix(): p.read_text(encoding="utf-8")
-             for p in sorted(path.rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
+             for p in sorted(path.rglob("*")) if p.is_file() and not _SKIP.intersection(p.parts)}
     if json.loads(files["manifest.json"]).get("kind") == "code":
         files.setdefault("scripts/cli.py", CLI)
     return files

@@ -244,6 +244,31 @@ skill-name/
 
 ## 6. Corrections Made
 
+### load_reference() — `.pytest_cache` exclusion bug fix (this audit)
+
+**File:** `apps/api/app/skills/reference.py` line 21
+
+**Before:**
+```python
+def load_reference(path: Path) -> dict[str, str]:
+    files = {p.relative_to(path).as_posix(): p.read_text(encoding="utf-8")
+             for p in sorted(path.rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
+```
+
+**After:**
+```python
+def load_reference(path: Path) -> dict[str, str]:
+    _SKIP = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git"}
+    files = {p.relative_to(path).as_posix(): p.read_text(encoding="utf-8")
+             for p in sorted(path.rglob("*")) if p.is_file() and not _SKIP.intersection(p.parts)}
+```
+
+**Root cause:** Running `python -m pytest` inside a reference Skill directory creates `.pytest_cache/` containing `CACHEDIR.TAG` and `README.md`. These files were picked up by `rglob("*")` and included in the validated package. `CACHEDIR.TAG` has an extension not in the allowed list, causing `structure.paths` to fail → `validation_failed` for 9 of 184 backend tests.
+
+**Regression test:** The existing 184 backend tests (all pass after this fix) constitute the regression guard. Specifically, tests that call `seed()` with the reference Skills directory will fail if `.pytest_cache` files are present and the exclusion is broken.
+
+---
+
 ### README.md — Main project (this audit)
 
 **Before:** 68-line minimal README with basic run instructions
