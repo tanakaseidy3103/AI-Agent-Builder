@@ -1,11 +1,12 @@
 # Known limitations
 
-Updated 2026-11-06. Each item is backed by a test, a benchmark file or a direct observation.
+Updated 2026-11-09. Each item is backed by a test, a benchmark file or a direct observation.
 
 ## Product
 
-- **Generated code Skills do not reach `verified` with the local models tested.** Benchmark B: 0/30 (llama3.2:3b and
-  qwen2.5-coder 7B). Human-written reference Skills do pass the same checks. See `docs/benchmarks/PHASE1_ANALYSIS.md`.
+- **Generated code Skills do not reach `verified` with the local models tested.** Benchmark C (`20261106-090709`):
+  0/42 (21 × qwen2.5-coder:latest + 21 × llama3.2:3b). 33/42 reach `validated` (all static checks pass).
+  Human-written reference Skills pass `verified` on the same stack. See `docs/benchmarks/PHASE1_ANALYSIS.md`.
 - **"Agents" are pipeline roles**, not autonomous agents. The Agent Office shows the five real roles (Planner,
   Developer, Reviewer, Tester, Builder). Researcher and Security reviewer are shown as planned; they do not exist.
 - No GitHub integration, no hosted deployment, no visual workflow editor.
