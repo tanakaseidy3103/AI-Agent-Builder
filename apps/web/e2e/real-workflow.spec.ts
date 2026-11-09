@@ -4,6 +4,7 @@
  * Three requests of increasing complexity, then a user correction ("Refine") that creates a new version.
  * Assertions check that every step happened and was reported honestly; they do NOT require the model to succeed.
  */
+import { advanced } from "./panes";
 import { expect, test, type Page } from "@playwright/test";
 
 test.skip(!process.env.RUN_REAL_GENERATION, "set RUN_REAL_GENERATION=1 to run real, multi-minute generations");
@@ -19,7 +20,8 @@ const CASES = [
 
 async function create(page: Page, prompt: string) {
   await page.getByLabel("Describe the agent you want").fill(prompt);
-  await page.getByLabel("Skill type").selectOption("code");
+  await advanced(page);
+  await page.getByLabel("Agent type").selectOption("code");
   await page.getByRole("button", { name: "Create agent" }).click();
 }
 
@@ -36,7 +38,7 @@ async function inspect(page: Page, id: string) {
   if (/failed validation/.test(text)) {
     await expect(page.getByRole("alert").filter({ hasText: "cannot be exported" })).toBeVisible();    // a failed Skill is never offered
   } else {
-    const href = await page.getByRole("link", { name: "Download ZIP" }).getAttribute("href");
+    const href = await page.getByRole("link", { name: "Download project (ZIP)" }).getAttribute("href");
     const zip = await page.request.get(href!);
     expect(zip.status()).toBe(200);                                              // real export of the stored package
   }
@@ -45,15 +47,15 @@ async function inspect(page: Page, id: string) {
 }
 
 test("three real requests and a user correction, end to end", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/#/studio");
   for (const c of CASES) {
     await create(page, c.prompt);
-    await expect(page.getByTestId("role-architect")).not.toHaveAttribute("data-state", "pending", { timeout: 120_000 });
+    await expect(page.getByTestId("role-architect")).not.toHaveAttribute("data-state", "waiting", { timeout: 120_000 });
     await inspect(page, c.id);
-    await page.getByRole("button", { name: "New Skill" }).click();
+    await page.getByRole("button", { name: "New agent" }).click();
   }
   // user correction on the last request -> a NEW version, old ones preserved
-  await page.goto("/");
+  await page.goto("/#/studio");
   await create(page, CASES[2].prompt);
   await expect(page.getByText(OUTCOME).last()).toBeVisible({ timeout: 15 * 60_000 });
   await page.getByRole("button", { name: "Refine (add a correction)" }).click();
