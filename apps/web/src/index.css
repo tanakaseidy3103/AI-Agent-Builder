@@ -10,7 +10,7 @@
   --color-line-strong: #33373e;
   --color-ink: #e7e8eb;
   --color-mute: #9ba0a9;
-  --color-faint: #686d76;
+  --color-faint: #878d96; /* 5.6:1 on panels (WCAG AA); was 3.6:1 */
   --color-accent: #5b5fe0;
   --color-accent-ink: #a9abff;
   --color-ok: #4cc38a;
@@ -40,6 +40,32 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line-strong) transparent;
 }
+
+/* Agent Office motion. Each class is only rendered for a real state: a running stage, a new handoff, a new event. */
+.agent-orbit {
+  background: conic-gradient(from 0deg, transparent 0 55%, var(--color-accent-ink) 85%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  animation: agent-orbit 1.4s linear infinite;
+}
+@keyframes agent-orbit { to { transform: rotate(1turn); } }
+
+.agent-bars i { display: block; width: 2px; border-radius: 1px; background: currentColor; animation: agent-bars 0.9s ease-in-out infinite; }
+.agent-bars i:nth-child(2) { animation-delay: 0.15s; }
+.agent-bars i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes agent-bars { 0%, 100% { height: 30%; } 50% { height: 100%; } }
+
+.handoff-comet { left: var(--to); transform: translateX(-50%); animation: handoff 0.9s cubic-bezier(0.4, 0, 0.2, 1) both; box-shadow: 0 0 8px var(--color-accent-ink); }
+@keyframes handoff { from { left: var(--from); opacity: 1; } 80% { opacity: 1; } to { left: var(--to); opacity: 0; } }
+
+/* Studio robot: only rendered with these classes while a stage is really running */
+.bot-pulse { animation: bot-pulse 1.2s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes bot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.bot-blink { animation: bot-blink 3s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes bot-blink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.15); } }
+
+.step-in { animation: step-in 0.35s ease-out both; }
+@keyframes step-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

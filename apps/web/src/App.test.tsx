@@ -9,7 +9,8 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 function renderApp(health: () => Response) {
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => (url === "/api/health" ? health() : json([]))));
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => (url === "/api/health" ? health()
+    : url === "/api/studio/models" ? json({ default: "qwen2.5-coder:latest", installed: [], error: null }) : json([]))));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><LangProvider lang="en"><App /></LangProvider></QueryClientProvider>);
 }

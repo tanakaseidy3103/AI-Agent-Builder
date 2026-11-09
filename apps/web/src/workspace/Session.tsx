@@ -1,14 +1,18 @@
 /** Center: the request conversation, the real plan, the live pipeline and the outcome. */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, type FailureCategory, type Job, type VersionDetail } from "../api";
+import { api, type FailureCategory, type Job, type Models, type VersionDetail } from "../api";
 import { useLang, useT, type Key } from "../i18n";
 import { useJob } from "./hooks";
 import { Pencil, Retry, Send, Spark } from "./icons";
 import { Button, ErrorNote, StatusPill, field, sectionTitle } from "./kit";
-import { Pipeline } from "./Pipeline";
+import { ActivityStream } from "./Office";
+import { PlanReview, type PlanOut } from "./PlanReview";
+import { UseAgent } from "./UseAgent";
+import { JOURNEY } from "./agents";
+import type { Draft } from "../pages/Studio";
 
-export interface Request { jobId: string; prompt: string; kind: string }
+export interface Request { jobId: string; prompt: string; kind: string; model?: string }
 
 const SAMPLES: Record<"en" | "ja", { title: string; prompt: string }[]> = {
   en: [
@@ -27,26 +31,44 @@ const SAMPLES: Record<"en" | "ja", { title: string; prompt: string }[]> = {
 
 const NEXT: Partial<Record<FailureCategory, Key[]>> = {
   syntax: ["next.model", "next.rephrase"], policy: ["next.rephrase", "next.model"], hallucinated_api: ["next.model", "next.rephrase"],
-  unsafe_instructions: ["next.rephrase"], entrypoint: ["next.model"], test_definition: ["next.model"], spec_error: ["next.rephrase"],
+  unsafe_instructions: ["next.rephrase"], secrets: ["next.rephrase"], entrypoint: ["next.model"], test_definition: ["next.model"], spec_error: ["next.rephrase"],
   test_failure: ["next.inspect", "next.model"], eval_failure: ["next.inspect", "next.rephrase"], execution_limit: ["next.inspect"],
   not_executable: ["next.code"],
 };
 
-export function Session({ requests, onSubmit, onOpen, openId }: {
+export function Session({ requests, onSubmit, onOpen, openId, draft, onAwaitingApproval }: {
   requests: Request[]; onSubmit: (r: Request) => void; onOpen: (versionId: string, reveal?: boolean) => void; openId: string | null;
+  draft?: Draft; onAwaitingApproval?: (waiting: boolean) => void;
 }) {
   const t = useT();
   const { lang } = useLang();
   const [prompt, setPrompt] = useState("");
   const [kind, setKind] = useState("auto");
+  const [model, setModel] = useState("");  // "" = server default
+  const models = useQuery({ queryKey: ["models"], queryFn: () => api<Models>("/studio/models"), staleTime: Infinity });
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const [reviewFirst, setReviewFirst] = useState(false);
+  type Ask = { prompt: string; kind: string; model?: string };
+  const [pending, setPending] = useState<(PlanOut & { ask: Ask }) | null>(null);
   const start = useMutation({
-    mutationFn: (r: { prompt: string; kind: string }) => api<Job>("/studio/skills/generate", { method: "POST", body: JSON.stringify(r) }),
-    onSuccess: (j, r) => { onSubmit({ jobId: j.id, ...r }); setPrompt(""); },
+    mutationFn: (r: Ask & { spec?: PlanOut["spec"] }) => api<Job>("/studio/skills/generate", { method: "POST", body: JSON.stringify(r) }),
+    onSuccess: (j, r) => { onSubmit({ jobId: j.id, prompt: r.prompt, kind: r.kind, model: r.model }); setPrompt(""); setPending(null); },
   });
-  useEffect(() => { endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" }); }, [requests.length]);
-  const submit = () => { if (prompt.trim().length >= 10 && !start.isPending) start.mutate({ prompt: prompt.trim(), kind }); };
+  const planner = useMutation({
+    mutationFn: (r: Ask) => api<PlanOut>("/studio/skills/plan", { method: "POST", body: JSON.stringify(r) }),
+    onSuccess: (p, ask) => setPending({ ...p, ask }),
+  });
+  useEffect(() => { onAwaitingApproval?.(!!pending); }, [pending]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (draft) { setPrompt(draft.text); inputRef.current?.focus(); } }, [draft?.n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" }); }, [requests.length, !!pending]);
+  const busy = start.isPending || planner.isPending;
+  const submit = () => {
+    if (prompt.trim().length < 10 || busy) return;
+    const ask = { prompt: prompt.trim(), kind, model: model || undefined };
+    if (reviewFirst) planner.mutate(ask);
+    else start.mutate(ask);
+  };
   const tooShort = prompt.trim().length > 0 && prompt.trim().length < 10;
 
   return (
@@ -61,7 +83,7 @@ export function Session({ requests, onSubmit, onOpen, openId }: {
                 <p className="max-w-2xl text-sm leading-relaxed text-mute">{t("ws.body")}</p>
               </div>
               <ol className="flex flex-wrap items-center gap-1 text-[11.5px] text-mute" aria-label={t("flow.title")}>
-                {(["flow.describe", "flow.plan", "flow.generate", "flow.review", "flow.test", "flow.repair", "flow.validate", "flow.export"] as Key[]).map((k, i, a) => (
+                {JOURNEY.map((j) => `journey.${j}` as Key).map((k, i, a) => (
                   <li key={k} className="flex items-center gap-1"><span className="rounded border border-line px-1.5 py-0.5">{t(k)}</span>{i < a.length - 1 && <span aria-hidden="true" className="text-faint">›</span>}</li>
                 ))}
               </ol>
@@ -82,10 +104,13 @@ export function Session({ requests, onSubmit, onOpen, openId }: {
           <ol className="space-y-8" aria-label={t("chat.title")}>
             {requests.map((r) => (
               <Turn key={r.jobId} req={r} onOpen={onOpen} openId={openId}
-                onRetry={() => start.mutate({ prompt: r.prompt, kind: r.kind })}
+                onRetry={() => start.mutate({ prompt: r.prompt, kind: r.kind, model: r.model })}
                 onRefine={() => { setPrompt(`${r.prompt}\n\n${t("chat.correction")}: `); setKind(r.kind); inputRef.current?.focus(); }} />
             ))}
           </ol>
+          {planner.isPending && <p className="text-sm text-mute" role="status">{t("plan.loading")}</p>}
+          {pending && <PlanReview key={pending.preview.slug + pending.ask.prompt} plan={pending} busy={start.isPending}
+            onApprove={(spec) => start.mutate({ ...pending.ask, spec })} onReject={() => setPending(null)} />}
           <div ref={endRef} />
         </div>
       </div>
@@ -100,21 +125,40 @@ export function Session({ requests, onSubmit, onOpen, openId }: {
               onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}
               className="block w-full resize-none bg-transparent px-3 pt-2.5 text-sm text-ink placeholder:text-faint focus:outline-none" />
             <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
-              <label htmlFor="kind" className="sr-only">{t("chat.kind")}</label>
-              <select id="kind" value={kind} onChange={(e) => setKind(e.target.value)} title={t("chat.kind")}
-                className="h-7 rounded-md border border-line bg-raised px-1.5 text-xs text-mute focus:border-accent/60 focus:outline-none">
-                <option value="auto">{t("chat.kind.auto")}</option>
-                <option value="instructions">{t("chat.kind.instructions")}</option>
-                <option value="code">{t("chat.kind.code")}</option>
+              <label htmlFor="model" className="sr-only">{t("chat.model")}</label>
+              <select id="model" value={model} onChange={(e) => setModel(e.target.value)} disabled={!models.data?.installed.length}
+                title={models.data?.error ?? t("chat.model")}
+                className="h-7 max-w-[11rem] rounded-md border border-line bg-raised px-1.5 font-mono text-[11.5px] text-mute focus:border-accent/60 focus:outline-none">
+                <option value="">{models.data ? `${models.data.default} · ${t("chat.modelDefault")}` : t("chat.model")}</option>
+                {models.data?.installed.filter((m) => m !== models.data!.default).map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
               <span id="prompt-help" className="hidden text-[11px] text-faint sm:inline">{t("ws.shortcut")}</span>
-              <Button type="submit" variant="primary" size="sm" className="ml-auto" disabled={prompt.trim().length < 10 || start.isPending}>
-                <Send size={13} />{start.isPending ? t("chat.sending") : t("chat.send")}
+              <Button type="submit" variant="primary" size="sm" className="ml-auto" disabled={prompt.trim().length < 10 || busy || !!pending}>
+                <Send size={13} />{busy ? t("chat.sending") : reviewFirst ? t("plan.propose") : t("chat.send")}
               </Button>
             </div>
           </div>
+          <details className="group text-xs">
+            <summary className="cursor-pointer select-none text-mute hover:text-ink">{t("chat.advanced")}</summary>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="flex items-center gap-2">
+                <label htmlFor="kind" className="text-mute">{t("chat.kind")}</label>
+                <select id="kind" value={kind} onChange={(e) => setKind(e.target.value)}
+                  className="h-7 rounded-md border border-line bg-raised px-1.5 text-xs text-ink focus:border-accent/60 focus:outline-none">
+                  <option value="auto">{t("chat.kind.auto")}</option>
+                  <option value="instructions">{t("chat.kind.instructions")}</option>
+                  <option value="code">{t("chat.kind.code")}</option>
+                </select>
+              </span>
+              <label className="flex items-center gap-2 text-ink">
+                <input type="checkbox" className="accent-[var(--color-accent)]" checked={reviewFirst} onChange={(e) => setReviewFirst(e.target.checked)} />
+                {t("plan.reviewFirst")}
+              </label>
+            </div>
+          </details>
           {tooShort && <p id="prompt-hint" className="text-xs text-warn">{t("chat.minLength")}</p>}
           {start.error && <ErrorNote error={start.error} />}
+          {planner.error && <ErrorNote error={planner.error} />}
         </div>
       </form>
     </div>
@@ -123,7 +167,7 @@ export function Session({ requests, onSubmit, onOpen, openId }: {
 
 function Turn({ req, onOpen, onRetry, onRefine, openId }: { req: Request; onOpen: (id: string, reveal?: boolean) => void; onRetry: () => void; onRefine: () => void; openId: string | null }) {
   const t = useT();
-  const job = useJob(req.jobId);
+  const job = useJob(req.jobId, true); // the turn owns its job's polling
   const j = job.data;
   const vid = j?.status === "completed" ? j.skill_version_id : null;
   const version = useQuery({ queryKey: ["version", vid], queryFn: () => api<VersionDetail>(`/studio/versions/${vid}`), enabled: !!vid });
@@ -152,7 +196,12 @@ function Turn({ req, onOpen, onRetry, onRefine, openId }: { req: Request; onOpen
             </dl>
           </section>
         )}
-        {j && <Pipeline job={j} exportable={v ? v.status !== "validation_failed" : null} />}
+        {j && (
+          <section className="rounded-lg border border-line bg-panel px-4 py-3" aria-label={t("office.activity")}>
+            <h3 className={`${sectionTitle} mb-2.5`}>{t("office.activity")}</h3>
+            <ActivityStream job={j} />
+          </section>
+        )}
         {j?.status === "failed" && (
           <div className="space-y-2">
             <ErrorNote error={t("chat.jobFailed", { error: j.error ?? "" })} />
@@ -178,6 +227,7 @@ function Turn({ req, onOpen, onRetry, onRefine, openId }: { req: Request; onOpen
               <Button size="sm" onClick={onRefine}><Pencil size={13} />{t("chat.refine")}</Button>
               {v.status !== "verified" && <Button size="sm" variant="quiet" onClick={onRetry}><Retry size={13} />{t("chat.retry")}</Button>}
             </div>
+            <UseAgent v={v} onView={() => onOpen(v.id, true)} />
           </section>
         )}
       </div>

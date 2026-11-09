@@ -4,14 +4,17 @@ import { useMemo, useState } from "react";
 import { API, api, type InstallInfo, type Integration, type Report, type VersionDetail } from "../api";
 import { useT, type Key } from "../i18n";
 import { Alert, Check, Cube, Download, FileI, Folder } from "./icons";
-import { Button, Code, CopyField, Empty, ErrorNote, Pill, StatusPill, StepMark, Tabs, sectionTitle } from "./kit";
+import { Button, Code, CopyButton, CopyField, Empty, ErrorNote, Pill, StatusPill, StepMark, Tabs, sectionTitle } from "./kit";
+import { ProjectInstall } from "./ProjectInstall";
 
-type Tab = "files" | "manifest" | "tests" | "validation" | "repairs" | "export";
+type Tab = (typeof TABS)[number];
 
-export function Inspector({ id, onSelect }: { id: string | null; onSelect: (id: string) => void }) {
+export const TABS = ["files", "manifest", "tests", "validation", "repairs", "export"] as const;
+
+export function Inspector({ id, onSelect, tab: initialTab }: { id: string | null; onSelect: (id: string) => void; tab?: string }) {
   const t = useT();
   const q = useQuery({ queryKey: ["version", id], queryFn: () => api<VersionDetail>(`/studio/versions/${id}`), enabled: !!id });
-  const [tab, setTab] = useState<Tab>("files");
+  const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(initialTab ?? "") ? (initialTab as Tab) : "files");
   if (!id) return <Empty icon={<Cube size={16} />} title={t("insp.emptyTitle")} body={t("insp.emptyBody")} />;
   if (q.isPending) return <p className="p-4 text-sm text-mute">{t("skills.loading")}</p>;
   if (q.error) return <div className="p-4"><ErrorNote error={q.error} /></div>;
@@ -27,7 +30,7 @@ export function Inspector({ id, onSelect }: { id: string | null; onSelect: (id: 
           </div>
           <select aria-label={t("version")} value={id} onChange={(e) => onSelect(e.target.value)}
             className="h-7 rounded-md border border-line bg-raised px-1.5 text-xs text-ink focus:border-accent/60 focus:outline-none">
-            {v.versions.map((x) => <option key={x.id} value={x.id}>v{x.version} · {x.status}</option>)}
+            {v.versions.map((x) => <option key={x.id} value={x.id}>v{x.version} · {t(`st.${x.status}` as Key)}</option>)}
           </select>
         </div>
         <EvidenceLadder v={v} />
@@ -80,7 +83,15 @@ export function EvidenceLadder({ v }: { v: VersionDetail }) {
 function Files({ v }: { v: VersionDetail }) {
   const t = useT();
   const [path, setPath] = useState(v.files.find((f) => f.path === "scripts/main.py")?.path ?? "SKILL.md");
-  const q = useQuery({ queryKey: ["file", v.id, path], queryFn: () => api<string>(`/studio/versions/${v.id}/files/${path}`) });
+  const fileQuery = (p: string) => ({ queryKey: ["file", v.id, p], queryFn: () => api<string>(`/studio/versions/${v.id}/files/${p}`) });
+  const q = useQuery(fileQuery(path));
+  const qc = useQueryClient();
+  const copyable = v.status !== "validation_failed"; // same rule as export: a failed Skill is never handed out
+  // failed static checks about this file (check ids are "<check>:<path>"), and the lines they name
+  const fileChecks = (v.validation?.report.static.checks ?? []).filter((c) => c.status === "fail" && c.id.endsWith(`:${path}`));
+  const marks = new Set(fileChecks.flatMap((c) => [...c.message.matchAll(/\bline (\d+)/g)].map((m) => Number(m[1]))));
+  // every file with its destination inside the tool's Skills folder; fetched only on click, cached afterwards
+  const copyAll = async () => (await Promise.all(v.files.map(async (f) => `# ${v.slug}/${f.path}\n${await qc.fetchQuery(fileQuery(f.path))}`))).join("\n\n");
   const tree = useMemo(() => {
     const groups = new Map<string, typeof v.files>();
     for (const f of v.files) {
@@ -91,7 +102,14 @@ function Files({ v }: { v: VersionDetail }) {
   }, [v]);
   return (
     <div className="flex min-h-0 flex-col lg:flex-row">
-      <nav aria-label={t("files.label")} className="shrink-0 border-b border-line py-2 lg:w-48 lg:border-b-0 lg:border-r">
+      <div className="shrink-0 border-b border-line px-3 py-2 lg:hidden">
+        <label htmlFor="file-pick" className="sr-only">{t("files.label")}</label>
+        <select id="file-pick" value={path} onChange={(e) => setPath(e.target.value)}
+          className="h-8 w-full rounded-md border border-line bg-raised px-2 font-mono text-[12.5px] text-ink focus:border-accent/60 focus:outline-none">
+          {v.files.map((f) => <option key={f.path} value={f.path}>{f.path}</option>)}
+        </select>
+      </div>
+      <nav aria-label={t("files.label")} className="hidden shrink-0 py-2 lg:block lg:w-48 lg:border-r lg:border-line">
         {tree.map(([dir, files]) => (
           <div key={dir || "root"}>
             {dir && <p className="flex items-center gap-1.5 px-3 pb-0.5 pt-1.5 text-[11.5px] text-mute"><Folder size={12} />{dir}</p>}
@@ -108,11 +126,26 @@ function Files({ v }: { v: VersionDetail }) {
         ))}
       </nav>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between border-b border-line px-3 py-1.5 font-mono text-[11.5px] text-mute">
-          <span className="truncate">{path}</span><span>{v.files.find((f) => f.path === path)?.size ?? 0} B</span>
+        <div className="flex flex-wrap items-center gap-x-2 border-b border-line px-3 py-1.5 text-[11.5px] text-mute">
+          <span className="truncate font-mono" title={t("files.destHelp")}>{v.slug}/{path}</span>
+          <span className="font-mono">{v.files.find((f) => f.path === path)?.size ?? 0} B</span>
+          <span className="ml-auto flex gap-1">
+            <CopyButton label={t("files.copy")} getText={() => q.data ?? ""} disabled={!copyable || !q.data} title={copyable ? undefined : t("export.blocked")} />
+            <CopyButton label={t("files.copyAll")} getText={copyAll} disabled={!copyable} title={copyable ? undefined : t("export.blocked")} />
+          </span>
         </div>
         <div className="max-h-[60vh] overflow-auto bg-canvas px-1 py-2">
-          {q.error ? <ErrorNote error={q.error} /> : <Code label={t("files.preview")} text={q.data ?? t("skills.loading")} lineNumbers />}
+          {fileChecks.length > 0 && (
+            <ul className="mx-2 mb-2 space-y-1.5 rounded-md border border-bad/25 bg-bad/[0.06] px-3 py-2 font-sans text-[12.5px]" aria-label={t("files.checks")}>
+              {fileChecks.map((c) => (
+                <li key={c.id}>
+                  <span className="font-mono text-bad">{c.id.split(":")[0]}</span> <span className="text-ink/90">{c.message}</span>
+                  {c.hint && <span className="block text-mute">{t("val.howToFix")}: {c.hint}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          {q.error ? <ErrorNote error={q.error} /> : <Code label={t("files.preview")} text={q.data ?? t("skills.loading")} lineNumbers path={path} marks={marks} />}
         </div>
       </div>
     </div>
@@ -244,6 +277,10 @@ function Validation({ v }: { v: VersionDetail }) {
             </section>
           )}
           <p className="text-xs text-mute"><span className="font-medium text-ink">{t("val.sandbox")}: </span>{sandboxNote}</p>
+          {r?.llm && (
+            <p className="text-xs text-mute" data-testid="llm-usage"><span className="font-medium text-ink">{t("val.model")}: </span>
+              {t("val.llm", { calls: r.llm.calls, pin: r.llm.prompt_tokens, out: r.llm.output_tokens, s: r.llm.model_seconds, tps: r.llm.tokens_per_second ?? "—" })}</p>
+          )}
           <details className="text-xs text-mute">
             <summary className="cursor-pointer select-none hover:text-ink">{t("val.check")} ({r.static.checks.length})</summary>
             <ul className="mt-2 divide-y divide-line rounded-md border border-line">
@@ -328,6 +365,14 @@ function Export({ v }: { v: VersionDetail }) {
           <p className="text-[11px] italic text-faint">{info.data.note}</p>
         </>
       )}
+
+      <section aria-label={t("gh.title")} className="space-y-2 border-t border-line pt-4">
+        <h3 className={sectionTitle}>{t("gh.title")}</h3>
+        <p className="text-xs leading-relaxed text-mute">{t("gh.body", { zip: info.data?.zip ?? "" })}</p>
+        <CopyField label="bash / PowerShell" text={`cd ${v.slug}\ngit init -b main\ngit add .\ngit commit -m "Add ${v.slug} ${v.version}"\ngh repo create ${v.slug} --private --source . --push`} />
+      </section>
+
+      <div className="border-t border-line pt-4"><ProjectInstall v={v} /></div>
     </div>
   );
 }

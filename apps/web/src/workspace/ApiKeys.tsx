@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type ApiKeyRow } from "../api";
+import { api, type ApiKeyRow, type Models } from "../api";
 import { useT } from "../i18n";
-import { Key } from "./icons";
-import { Button, CopyField, Empty, ErrorNote, field } from "./kit";
+import { Chip, Key } from "./icons";
+import { Button, CopyField, Empty, ErrorNote, Pill, field, sectionTitle } from "./kit";
 
 export function ApiKeys() {
   const t = useT();
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [created, setCreated] = useState<string | null>(null);
+  const models = useQuery({ queryKey: ["models"], queryFn: () => api<Models>("/studio/models"), staleTime: Infinity });
   const keys = useQuery({ queryKey: ["keys"], queryFn: () => api<ApiKeyRow[]>("/studio/api-keys") });
   const create = useMutation({
     mutationFn: () => api<{ key: string }>("/studio/api-keys", { method: "POST", body: JSON.stringify({ name }) }),
@@ -20,8 +21,17 @@ export function ApiKeys() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["keys"] }),
   });
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-5 px-4 py-8 sm:px-6">
-      <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-ink"><Key size={16} className="text-mute" />{t("keys.title")}</h1>
+    <div className="w-full max-w-2xl space-y-5">
+      <section aria-label={t("settings.model")} className="space-y-2 rounded-lg border border-line bg-panel p-4">
+        <h2 className={`${sectionTitle} flex items-center gap-1.5`}><Chip size={13} />{t("settings.model")}</h2>
+        <p className="text-xs leading-relaxed text-mute">{t("settings.modelBody")}</p>
+        {models.error && <ErrorNote error={models.error} />}
+        {models.data?.error && <ErrorNote error={models.data.error} />}
+        <ul className="flex flex-wrap gap-1.5">
+          {models.data?.installed.map((m) => <li key={m}><Pill tone={m === models.data!.default ? "accent" : "mute"}>{m}{m === models.data!.default ? ` · ${t("chat.modelDefault")}` : ""}</Pill></li>)}
+        </ul>
+      </section>
+      <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight text-ink"><Key size={15} className="text-mute" />{t("keys.title")}</h2>
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
         <input aria-label={t("keys.name")} className={field} placeholder="my-backend" value={name} onChange={(e) => setName(e.target.value)} />
         <Button type="submit" variant="primary" disabled={!name || create.isPending}>{t("keys.create")}</Button>

@@ -1,6 +1,7 @@
 /** Workspace primitives: status marks, pills, buttons, tabs, code, empty/error states. */
 import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
-import { useT } from "../i18n";
+import { useT, type Key } from "../i18n";
+import { highlightLine, langOf } from "./highlight";
 import { Alert, Check, Clock, Cross } from "./icons";
 
 export type Tone = "ok" | "bad" | "warn" | "info" | "accent" | "mute";
@@ -16,7 +17,8 @@ const TONE: Record<Tone, string> = {
 
 export function toneOf(status?: string | null): Tone {
   switch (status) {
-    case "verified": case "passed": case "pass": case "completed": return "ok";
+    case "verified": case "passed": case "pass": return "ok";
+    case "completed": return "mute"; // a finished job is not a successful agent: only the agent's own result gets a colour
     case "validated": return "info";
     case "validation_failed": case "warn": return "warn";
     case "failed": case "fail": case "error": return "bad";
@@ -27,14 +29,22 @@ export function toneOf(status?: string | null): Tone {
 
 export function Pill({ tone = "mute", children, title }: { tone?: Tone; children: ReactNode; title?: string }) {
   return (
-    <span title={title} className={`inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium ring-1 ring-inset ${TONE[tone]}`}>
+    <span title={title} className={`inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[11px] font-medium ring-1 ring-inset ${TONE[tone]}`}>
       {children}
     </span>
   );
 }
 
+const LABELLED = new Set(["verified", "validated", "validation_failed", "completed", "generating", "draft", "failed", "running", "passed"]);
+
+/** Plain-language status label; the raw backend status stays in data-status (and in the tooltip). */
 export function StatusPill({ status }: { status: string }) {
-  return <Pill tone={toneOf(status)}>{status}</Pill>;
+  const t = useT();
+  return (
+    <span data-status={status} className="inline-flex">
+      <Pill tone={toneOf(status)} title={status}>{LABELLED.has(status) ? t(`st.${status}` as Key) : status}</Pill>
+    </span>
+  );
 }
 
 /** Stage/step mark. Animates only for a real `running` state. */
@@ -72,28 +82,51 @@ export function Tabs<T extends string>({ value, onChange, items, label }: { valu
   );
 }
 
-export function Code({ text, label, lineNumbers = false }: { text: string; label?: string; lineNumbers?: boolean }) {
-  const lines = text.replace(/\n$/, "").split("\n");
+const TOKEN: Record<string, string> = { kw: "text-accent-ink", str: "text-ok/90", com: "italic text-faint", num: "text-warn", key: "text-info", fn: "text-ink" };
+const MAX_LINES = 3000; // larger files stay readable and the page stays responsive; the full file is in the download
+
+export function Code({ text, label, lineNumbers = false, path, marks }: {
+  text: string; label?: string; lineNumbers?: boolean; path?: string; marks?: Set<number>;
+}) {
+  const t = useT();
+  const all = text.replace(/\n$/, "").split("\n");
+  const lines = all.slice(0, MAX_LINES);
+  const lang = path ? langOf(path) : "text";
   return (
     <pre aria-label={label} className="overflow-auto font-mono text-[12.5px] leading-[1.65] text-ink/90">
       {lineNumbers ? lines.map((l, i) => (
-        <div key={i} className="flex"><span className="w-10 shrink-0 select-none pr-3 text-right text-faint">{i + 1}</span><span className="whitespace-pre">{l || " "}</span></div>
+        <div key={i} className={`flex ${marks?.has(i + 1) ? "bg-bad/10" : ""}`} data-line={i + 1}>
+          <span className={`w-10 shrink-0 select-none pr-3 text-right ${marks?.has(i + 1) ? "text-bad" : "text-faint"}`}>{i + 1}</span>
+          <span className="whitespace-pre">{l ? highlightLine(l, lang).map((tk, k) => <span key={k} className={tk.kind ? TOKEN[tk.kind] : undefined}>{tk.text}</span>) : " "}</span>
+        </div>
       )) : text}
+      {all.length > MAX_LINES && <div className="px-3 pt-2 font-sans text-xs text-warn">{t("code.truncated", { shown: MAX_LINES, total: all.length })}</div>}
     </pre>
   );
 }
 
-export function CopyField({ label, text }: { label: string; text: string }) {
+/** Copies text produced on click (so large content is only fetched when asked for). */
+export function CopyButton({ getText, label, disabled, title }: { getText: () => string | Promise<string>; label?: string; disabled?: boolean; title?: string }) {
   const t = useT();
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<"idle" | "copied" | "error">("idle");
+  return (
+    <button type="button" disabled={disabled} title={title}
+      className="inline-flex min-h-6 items-center rounded px-1.5 text-accent-ink hover:bg-hover disabled:pointer-events-none disabled:opacity-40"
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(await getText()); setState("copied"); } catch { setState("error"); }
+        setTimeout(() => setState("idle"), 1500);
+      }}>
+      <span aria-live="polite">{state === "copied" ? t("copied") : state === "error" ? t("copyFailed") : label ?? t("copy")}</span>
+    </button>
+  );
+}
+
+export function CopyField({ label, text }: { label: string; text: string }) {
   return (
     <div className="overflow-hidden rounded-md border border-line bg-canvas">
       <div className="flex items-center justify-between border-b border-line px-3 py-1.5 text-[11px] text-mute">
         <span>{label}</span>
-        <button type="button" className="rounded px-1.5 py-0.5 text-accent-ink hover:bg-hover"
-          onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setCopied(false); } }}>
-          {copied ? t("copied") : t("copy")}
-        </button>
+        <CopyButton getText={() => text} />
       </div>
       <pre className="overflow-x-auto px-3 py-2 font-mono text-xs text-ink/90">{text}</pre>
     </div>
@@ -121,3 +154,17 @@ export function Empty({ icon, title, body, children }: { icon?: ReactNode; title
 
 export const field = "w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm text-ink placeholder:text-faint transition-colors focus:border-accent/60 focus:outline-none";
 export const sectionTitle = "text-[11px] font-semibold uppercase tracking-[0.08em] text-faint";
+
+export function PageHeader({ title, body, children }: { title: string; body?: string; children?: ReactNode }) {
+  return (
+    <header className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 pb-4 pt-5 sm:px-6">
+      <div className="min-w-0">
+        <h1 className="text-lg font-semibold tracking-tight text-ink">{title}</h1>
+        {body && <p className="mt-0.5 max-w-2xl text-[13px] text-mute">{body}</p>}
+      </div>
+      {children && <div className="flex flex-wrap gap-2">{children}</div>}
+    </header>
+  );
+}
+
+export const card = "rounded-lg border border-line bg-panel";

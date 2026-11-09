@@ -35,3 +35,8 @@ export const Send = (p: P) => <I {...p}><path d="M14 2L7.2 8.8M14 2L9.6 14l-2.4-
 export const Retry = (p: P) => <I {...p}><path d="M2.6 8a5.4 5.4 0 019.5-3.5L13.5 6M13.5 2.5V6H10M13.4 8a5.4 5.4 0 01-9.5 3.5L2.5 10M2.5 13.5V10H6" /></I>;
 export const Pencil = (p: P) => <I {...p}><path d="M10.8 2.6l2.6 2.6-8 8H2.8v-2.6z" /></I>;
 export const Activity = (p: P) => <I {...p}><path d="M1.5 8h3l2-5 3 10 2-5h3" /></I>;
+export const CodeI = (p: P) => <I {...p}><path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5M9 3l-2 10" /></I>;
+export const Grid = (p: P) => <I {...p}><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></I>;
+export const Plug = (p: P) => <I {...p}><path d="M6 1.5v3M10 1.5v3M4 4.5h8v2.5a4 4 0 01-8 0zM8 11v3.5" /></I>;
+export const Gear = (p: P) => <I {...p}><circle cx="8" cy="8" r="2" /><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3" /></I>;
+export const Trash = (p: P) => <I {...p}><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.5 6.5v4.5M9.5 6.5v4.5" /></I>;
