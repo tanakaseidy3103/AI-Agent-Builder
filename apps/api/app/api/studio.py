@@ -4,16 +4,18 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.auth import hash_key, new_key, require_local
 from app.config import settings
 from app.db import get_session, get_session_factory
+from app import llm
 from app.llm import LLMProvider, get_provider
 from app.llm import LLMError
-from app.models import (ApiKey, AuditEvent, ExportRecord, GenerationJob, Skill, SkillVersion, ValidationRun, audit, now)
-from app.skills import adapters, storage
+from app.models import (ApiKey, AuditEvent, ExecutionLog, ExportRecord, GenerationJob, Skill, SkillVersion, ValidationRun, audit,
+                        now)
+from app.skills import adapters, project, storage
 from app.skills.evaluation import full_validation
 from app.skills.package import Manifest, safe_relpath, slugify
 from app.skills.pipeline import build_manifest, plan_spec, run_generation
@@ -25,6 +27,7 @@ class GenerateIn(BaseModel):
     prompt: str = Field(min_length=10, max_length=4000)
     kind: Literal["auto", "instructions", "code"] = "auto"
     spec: dict | None = None  # plan from POST /skills/plan, possibly edited by the user
+    model: str | None = Field(default=None, max_length=200)  # one of GET /studio/models; None = server default
 
 
 def _plan_preview(spec: dict) -> dict:
@@ -45,9 +48,23 @@ def _plan_preview(spec: dict) -> dict:
             "input_schema": m.input_schema, "output_schema": m.output_schema, "warnings": warnings}
 
 
+def _provider_for(model: str | None, default: LLMProvider) -> LLMProvider:
+    """The requested model, only if the local Ollama really has it installed."""
+    if not model or model == settings.llm_model:
+        return default
+    try:
+        ok = model in llm.installed_models()
+    except llm.LLMError as e:
+        raise HTTPException(503, str(e)) from e
+    if not ok:
+        raise HTTPException(422, f"model {model!r} is not installed in the local Ollama")
+    return llm.OllamaProvider(settings.ollama_base_url, model)
+
+
 @router.post("/skills/plan")
 def plan(body: GenerateIn, provider: LLMProvider = Depends(get_provider)) -> dict:
     """Step 1 of creation: let the model propose a plan; nothing is generated or stored yet."""
+    provider = _provider_for(body.model, provider)
     try:
         spec = plan_spec(provider, body.prompt.strip(), None if body.kind == "auto" else body.kind)
     except LLMError as e:
@@ -86,6 +103,7 @@ def generate(body: GenerateIn, bg: BackgroundTasks, s: Session = Depends(get_ses
         # every job holds the local model/GPU for minutes; unbounded queueing exhausts the machine
         raise HTTPException(429, f"{running} generation(s) already running; try again when one finishes",
                             headers={"Retry-After": "30"})
+    provider = _provider_for(body.model, provider)
     job = GenerationJob(prompt=body.prompt.strip(), requested_kind=None if body.kind == "auto" else body.kind,
                         approved_spec=body.spec)
     s.add(job)
@@ -116,6 +134,41 @@ def list_skills(s: Session = Depends(get_session)) -> list[dict]:
         out.append({"id": sk.id, "slug": sk.slug, "name": sk.name, "description": sk.description,
                     "latest": _version_out(latest) if latest else None, "versions": len(sk.versions)})
     return out
+
+
+@router.delete("/skills/{skill_id}", status_code=204)
+def delete_skill(skill_id: str, s: Session = Depends(get_session)) -> Response:
+    """Permanently remove a Skill, its versions, their validation/export/run records and stored packages.
+    Generation jobs are kept as history (their version link is cleared); the audit log records the deletion."""
+    sk = s.get(Skill, skill_id)
+    if sk is None:
+        raise HTTPException(404, "skill not found")
+    ids = [v.id for v in sk.versions]
+    keys = [v.storage_key for v in sk.versions]
+    if ids:
+        s.execute(update(GenerationJob).where(GenerationJob.skill_version_id.in_(ids)).values(skill_version_id=None))
+        for model in (ValidationRun, ExportRecord, ExecutionLog):
+            s.execute(delete(model).where(model.skill_version_id.in_(ids)))
+        s.execute(delete(SkillVersion).where(SkillVersion.id.in_(ids)))
+    audit(s, "skill.deleted", sk.id, slug=sk.slug, versions=len(ids))
+    s.delete(sk)
+    s.commit()
+    for key in keys:  # files last: a failed DB commit must not leave rows pointing at deleted packages
+        storage.delete_package(key)
+    return Response(status_code=204)
+
+
+class AnalyzeIn(BaseModel):
+    path: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/projects/analyze")
+def analyze_project(body: AnalyzeIn) -> dict:
+    """Read-only look at a local project folder: languages, frameworks, git state. Nothing is written."""
+    try:
+        return project.analyze(project.resolve_project(body.path))
+    except project.ProjectError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @router.get("/versions/{version_id}")
@@ -162,6 +215,15 @@ def validate(version_id: str, s: Session = Depends(get_session)) -> dict:
     return {"id": run.id, "status": status, "report": report, "created_at": run.created_at}
 
 
+@router.get("/models")
+def models() -> dict:
+    """Installed local models and the server default. Ollama being down is reported, not hidden."""
+    try:
+        return {"default": settings.llm_model, "installed": llm.installed_models(), "error": None, "runtime": llm.running_models()}
+    except llm.LLMError as e:
+        return {"default": settings.llm_model, "installed": [], "error": str(e), "runtime": []}
+
+
 @router.get("/integrations")
 def integrations() -> list[dict]:
     return [{"id": t.id, "label": t.label, "scope": t.scope, "notes": t.notes} for t in adapters.TARGETS.values()]
@@ -194,6 +256,46 @@ def export(version_id: str, target: str, s: Session = Depends(get_session)) -> R
 def install(version_id: str, target: str, s: Session = Depends(get_session)) -> dict:
     v = _get_version(s, version_id)
     return {**adapters.install_instructions(target, _exportable(v, target)), "status": v.status}
+
+
+class ProjectIn(BaseModel):
+    path: str = Field(min_length=1, max_length=1000)
+    target: str
+    token: str | None = None  # from the plan; required to apply
+
+
+def _project_args(s: Session, version_id: str, body: ProjectIn):
+    v = _get_version(s, version_id)
+    m = _exportable(v, body.target)  # same rules as export: never a failed Skill, only declared tools
+    try:
+        root = project.resolve_project(body.path)
+    except project.ProjectError as e:
+        raise HTTPException(400, str(e)) from e
+    return v, root, (root, body.target, m.id, m.version, storage.read_package(v.storage_key))
+
+
+@router.post("/versions/{version_id}/project/plan")
+def project_plan(version_id: str, body: ProjectIn, s: Session = Depends(get_session)) -> dict:
+    """Read-only: what would be created in the user's project. Nothing is written."""
+    _, _, args = _project_args(s, version_id, body)
+    try:
+        return project.plan(*args)
+    except project.ProjectError as e:
+        raise HTTPException(409, str(e)) from e
+
+
+@router.post("/versions/{version_id}/project/apply")
+def project_apply(version_id: str, body: ProjectIn, s: Session = Depends(get_session)) -> dict:
+    v, root, args = _project_args(s, version_id, body)
+    if not body.token:
+        raise HTTPException(400, "approve a plan first (token missing)")
+    try:
+        out = project.apply(*args, body.token)
+    except project.ProjectError as e:
+        raise HTTPException(409, str(e)) from e
+    audit(s, "skill.installed_in_project", v.id, integration=body.target, root=str(root), files=len(out["created"]), branch=out["branch"])
+    s.commit()
+    return out
 
 
 class KeyIn(BaseModel):

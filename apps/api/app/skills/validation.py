@@ -114,6 +114,30 @@ DESTRUCTIVE_STEP = re.compile(
 NEGATION = re.compile(r"\b(not|never|don't|do not|unless|without asking|only if the user)\b", re.I)
 
 
+# Exported/copied/installed packages must never carry credentials. Provider formats are flagged everywhere; generic
+# `password = "..."` assignments are skipped in tests/ and evals/, where fake credentials are legitimate inputs.
+SECRET_FORMATS = [
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "AWS access key"),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"), "GitHub token"),
+    (re.compile(r"\bsk-(ant-)?[A-Za-z0-9_-]{20,}"), "API secret key (sk-...)"),
+    (re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"), "Slack token"),
+    (re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), "Google API key"),
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "private key"),
+]
+SECRET_ASSIGNMENT = re.compile(
+    r"\b(password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)\b\s*[:=]\s*[\"']([^\"'\s]{8,})[\"']", re.I)
+PLACEHOLDER = re.compile(r"your|example|change|placeholder|dummy|xxx|<|\$\{|\*\*\*", re.I)
+
+
+def hardcoded_secrets(files: dict[str, str]) -> list[str]:
+    found = []
+    for path, text in files.items():
+        found += [f"{path}: {what}" for rx, what in SECRET_FORMATS if rx.search(text)]
+        if not path.startswith(("tests/", "evals/")):
+            found += [f"{path}: hard-coded {m.group(1)}" for m in SECRET_ASSIGNMENT.finditer(text) if not PLACEHOLDER.search(m.group(2))]
+    return sorted(set(found))
+
+
 def unsafe_instructions(files: dict[str, str]) -> list[str]:
     found = []
     for path, text in files.items():
@@ -158,6 +182,8 @@ def validate_package(files: dict[str, str]) -> tuple[list[Check], Manifest | Non
     unsafe = unsafe_instructions(files)
     add("skill_md.safety", "fail" if unsafe else "pass",
         "; ".join(unsafe)[:400] or "no dangerous commands or instruction overrides in the Markdown files")
+    secrets = hardcoded_secrets(files)
+    add("package.secrets", "fail" if secrets else "pass", "; ".join(secrets)[:400] or "no hard-coded credentials")
 
     fm = parse_frontmatter(files["SKILL.md"])
     if not fm.get("name") or not fm.get("description"):
@@ -307,7 +333,8 @@ HINTS = {
     "manifest.schema": "Fix manifest.json fields (slug id, semver version, kind instructions|code).",
     "skill_md.safety": ("Remove commands that delete files, run downloaded code, escalate privileges or send secrets, "
                         "and any text telling the agent to ignore its instructions."),
-    "skill_md.frontmatter": "SKILL.md must start with ---/name/description--- and name must equal manifest id.",
+    "package.secrets": "Remove the credential and read it at runtime from an environment variable the user sets (os.environ).",
+    "skill_md.frontmatter":"SKILL.md must start with ---/name/description--- and name must equal manifest id.",
     "manifest.io_schemas": "input_schema and output_schema must be {type: object, properties: {...}} with required ⊆ properties.",
     "manifest.permissions": "Remove network/filesystem-write; the sandbox never grants them.",
     "manifest.dependencies": "Rewrite with the Python standard library; external packages cannot be installed offline.",

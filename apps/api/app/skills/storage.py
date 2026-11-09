@@ -34,3 +34,11 @@ def read_package(key: str) -> dict[str, str]:
     base = _root() / key
     return {p.relative_to(base).as_posix(): p.read_text(encoding="utf-8")
             for p in sorted(base.rglob("*")) if p.is_file()}
+
+
+def delete_package(key: str) -> None:
+    root = _root()
+    base = (root / key).resolve()
+    if not key or base.parent != root:  # only a direct child of the storage root, never anything above it
+        raise ValueError(f"invalid storage key {key!r}")
+    shutil.rmtree(base, ignore_errors=True)

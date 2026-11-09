@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.llm import LLMError, LLMProvider
+from app.llm import LLMError, LLMProvider, usage_summary
 from app.models import GenerationJob, Skill, SkillVersion, ValidationRun, audit, emit_event
 from app.skills import storage
 from app.skills.evaluation import failures_text, full_validation
@@ -379,6 +379,7 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
 
     t.start("report")
     crit = ", ".join(f"{c['id']}={'pass' if c['passed'] else 'fail'}" for c in report["criteria"])
+    report["llm"] = usage_summary(getattr(provider, "usage", []))  # measured, not estimated; None for the test provider
     report["repair_rounds"] = rounds
     report["repair_history"] = history
     report["tests_rewritten_in_repair"] = tests_rewritten

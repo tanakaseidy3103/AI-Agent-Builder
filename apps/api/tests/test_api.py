@@ -227,3 +227,118 @@ def test_concurrent_generations_are_limited(client, factory, monkeypatch):
         s.commit()
     r = client.post("/studio/skills/generate", json={"prompt": "Analyze React projects for performance"})
     assert r.status_code == 429 and r.headers["retry-after"] == "30"
+
+
+def test_models_lists_installed_ollama_models(client, monkeypatch):
+    from app import llm
+    monkeypatch.setattr(llm, "installed_models", lambda: ["llama3.2:3b", "qwen2.5-coder:latest"])
+    body = client.get("/studio/models").json()
+    assert body["installed"] == ["llama3.2:3b", "qwen2.5-coder:latest"] and body["error"] is None
+
+
+def test_models_reports_ollama_down_instead_of_hiding_it(client, monkeypatch):
+    from app import llm
+    def down():
+        raise llm.LLMError("Ollama unreachable at http://127.0.0.1:11434: ConnectError")
+    monkeypatch.setattr(llm, "installed_models", down)
+    assert client.get("/studio/models").json()["error"].startswith("Ollama unreachable")
+
+
+def test_generate_rejects_a_model_that_is_not_installed(client, monkeypatch):
+    from app import llm
+    monkeypatch.setattr(llm, "installed_models", lambda: ["qwen2.5-coder:latest"])
+    r = client.post("/studio/skills/generate", json={"prompt": "Count words in a text file please", "model": "evil; rm -rf /"})
+    assert r.status_code == 422 and "not installed" in r.json()["detail"]
+
+
+def _git_project(tmp_path):
+    import subprocess
+    root = tmp_path / "shop"
+    root.mkdir()
+    (root / "package.json").write_text('{"dependencies": {"react": "^18.3.1", "react-dom": "^18.3.1"}}')
+    for args in (["init", "-q", "-b", "main"], ["add", "."],
+                 ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "init"]):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+    return root
+
+
+def test_project_plan_is_read_only_and_describes_exact_files(client, code_version, tmp_path):
+    root = _git_project(tmp_path)
+    before = sorted(p.as_posix() for p in root.rglob("*") if ".git" not in p.parts)
+    plan = client.post(f"/studio/versions/{code_version}/project/plan", json={"path": str(root), "target": "claude-code"}).json()
+    assert plan["analysis"]["languages"] == ["JavaScript/TypeScript"] and plan["analysis"]["frameworks"] == ["React"]
+    assert plan["analysis"]["git"]["branch"] == "main" and plan["analysis"]["git"]["dirty"] is False
+    assert plan["dest"] == ".claude/skills/react-performance-analyzer"
+    assert ".claude/skills/react-performance-analyzer/SKILL.md" in [f["path"] for f in plan["files"]]
+    assert plan["blockers"] == [] and plan["branch"].startswith("aab/react-performance-analyzer-")
+    assert sorted(p.as_posix() for p in root.rglob("*") if ".git" not in p.parts) == before  # nothing written
+
+
+def test_project_apply_needs_the_plan_token_creates_a_branch_and_never_overwrites(client, code_version, tmp_path):
+    import subprocess
+    root = _git_project(tmp_path)
+    url = f"/studio/versions/{code_version}/project"
+    body = {"path": str(root), "target": "claude-code"}
+    assert client.post(f"{url}/apply", json=body).status_code == 400                      # no approval
+    assert client.post(f"{url}/apply", json={**body, "token": "0" * 32}).status_code == 409  # stale/forged plan
+    plan = client.post(f"{url}/plan", json=body).json()
+    out = client.post(f"{url}/apply", json={**body, "token": plan["token"]}).json()
+    assert (root / ".claude/skills/react-performance-analyzer/SKILL.md").is_file()
+    assert len(out["created"]) == len(plan["files"])
+    branch = subprocess.run(["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+    assert branch == plan["branch"] and "git branch -D" in out["rollback"]["bash"]
+    again = client.post(f"{url}/plan", json=body).json()                                  # second install is blocked
+    assert any("already exists" in b for b in again["blockers"])
+    assert client.post(f"{url}/apply", json={**body, "token": again["token"]}).status_code == 409
+
+
+def test_project_install_refuses_dirty_trees_bad_paths_and_failed_skills(client, code_version, fake, sbx, tmp_path):
+    root = _git_project(tmp_path)
+    (root / "wip.txt").write_text("uncommitted")
+    plan = client.post(f"/studio/versions/{code_version}/project/plan", json={"path": str(root), "target": "claude-code"}).json()
+    assert any("uncommitted" in b for b in plan["blockers"])
+    assert client.post(f"/studio/versions/{code_version}/project/plan", json={"path": "relative/dir", "target": "claude-code"}).status_code == 400
+    assert client.post(f"/studio/versions/{code_version}/project/plan", json={"path": str(root), "target": "canonical"}).status_code == 409
+    bad = fenced("import socket\ndef run(d):\n    return {}\n")
+    vid = _generate(client, fake, [SPEC_CODE, {"cases": []}, bad, fenced(CODE_TEST)] + [bad + fenced(CODE_TEST)] * 3)
+    assert client.post(f"/studio/versions/{vid}/project/plan", json={"path": str(root), "target": "claude-code"}).status_code == 409
+
+
+def test_delete_skill_removes_versions_records_and_package_but_keeps_job_history(client, code_version, factory):
+    from app.models import AuditEvent, GenerationJob, Skill, SkillVersion, ValidationRun
+    from app.skills import storage
+    with factory() as s:
+        v = s.get(SkillVersion, code_version)
+        skill_id, key = v.skill_id, v.storage_key
+    client.get(f"/studio/versions/{code_version}/export/claude-code")   # creates an ExportRecord
+    assert storage.read_package(key)
+    assert client.delete(f"/studio/skills/{skill_id}").status_code == 204
+    assert client.get(f"/studio/versions/{code_version}").status_code == 404
+    assert storage.read_package(key) == {}
+    with factory() as s:
+        assert s.get(Skill, skill_id) is None
+        assert s.query(ValidationRun).filter_by(skill_version_id=code_version).count() == 0
+        assert all(j.skill_version_id != code_version for j in s.query(GenerationJob))
+        assert s.query(AuditEvent).filter_by(action="skill.deleted", target=skill_id).count() == 1
+    assert client.delete(f"/studio/skills/{skill_id}").status_code == 404
+
+
+def test_storage_refuses_to_delete_outside_its_root():
+    from app.skills import storage
+    for bad in ("", "..", "../x", "a/b"):
+        with pytest.raises(ValueError):
+            storage.delete_package(bad)
+
+
+def test_project_analyze_is_read_only(client, tmp_path):
+    root = _git_project(tmp_path)
+    r = client.post("/studio/projects/analyze", json={"path": str(root)}).json()
+    assert r["languages"] == ["JavaScript/TypeScript"] and r["git"]["branch"] == "main"
+    assert client.post("/studio/projects/analyze", json={"path": "relative"}).status_code == 400
+
+
+def test_plan_rejects_a_model_that_is_not_installed(client, monkeypatch):
+    from app import llm
+    monkeypatch.setattr(llm, "installed_models", lambda: ["qwen2.5-coder:latest"])
+    r = client.post("/studio/skills/plan", json={"prompt": "Count words in a text file please", "model": "nope:1b"})
+    assert r.status_code == 422

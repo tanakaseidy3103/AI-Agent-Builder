@@ -171,3 +171,26 @@ def test_plain_language_destructive_steps(text, blocked):
     checks, _ = validate_package(files)
     c = next(c for c in checks if c.id == "skill_md.safety")
     assert (c.status == "fail") is blocked
+
+
+@pytest.mark.parametrize("path,text,flagged", [
+    ("scripts/main.py", 'KEY = "AKIA' + "ABCDEFGHIJKLMNOP" + '"\n', True),
+    ("scripts/main.py", 'token = "ghp_' + "a" * 36 + '"\n', True),
+    ("docs/usage.md", "export OPENAI_API_KEY=sk-" + "abcdefghijklmnopqrstuv" + "\n", True),
+    ("scripts/main.py", "-----BEGIN RSA PRIVATE KEY-----\n", True),
+    ("scripts/main.py", 'password = "hunter2hunter2"\n', True),
+    ("tests/test_main.py", 'password = "hunter2hunter2"\n', False),       # fake credential as a detector input
+    ("scripts/main.py", 'api_key = "your-api-key-here"\n', False),       # placeholder
+    ("scripts/main.py", 'api_key = os.environ["API_KEY"]\n', False),     # read at runtime
+])
+def test_hardcoded_secrets(path, text, flagged):
+    from app.skills.validation import hardcoded_secrets
+    assert bool(hardcoded_secrets({path: text})) is flagged
+
+
+def test_package_with_a_secret_fails_static_validation():
+    files = code_package()
+    files["scripts/main.py"] += '\nTOKEN = "ghp_' + "b" * 36 + '"\n'
+    checks, _ = validate_package(files)
+    c = next(c for c in checks if c.id == "package.secrets")
+    assert c.status == "fail" and "GitHub token" in c.message
