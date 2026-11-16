@@ -245,9 +245,22 @@ cd packages/sdk-python && PYTHONPATH=. python -m pytest tests -q   # Python SDK
 cd apps/api && .venv/Scripts/python.exe -u scripts/e2e_real_ollama.py   # real model + sandbox + independent oracle
 ```
 
-Results of 2026-11-16 on this branch: backend 330 passed, UGREEN Skill 29, SDK 6, Vitest 90, production build OK,
-Playwright 69 passed and 1 environmental failure (Windows Application Control), Demo Mode 16 passed.
-Details, skips and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
+Results on this branch, re-run 2026-11-16 with saved logs (Windows 11, Docker 29.9.2, real sandbox):
+
+| Suite | Result |
+|---|---|
+| Backend (`pytest`) | 330 passed, 0 skipped |
+| UGREEN Skill package | 29 passed |
+| Python SDK | 6 passed |
+| Frontend unit (Vitest) | 90 passed |
+| Production build | OK |
+| Playwright local, desktop + mobile (mocked LLM, real API and sandbox) | 72 passed, 0 failed, 36 skipped (opt-in real-model and screenshot tests, desktop-only tests in the mobile project) |
+| Playwright Demo Mode, desktop + mobile | 16 passed, 2 skipped (opt-in UX tour) |
+
+Vitest, build and both Playwright suites ran on `feature/nas-project-memory-runtime`, whose `apps/web`, `packages` and
+Demo Mode code are identical to this branch (its API adds only the Project Memory routes). An earlier run the same
+day had 1 environmental failure (Windows Application Control blocked the virtualenv launcher); it did not recur.
+Details and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
 
 ## Generate and export a Skill
 
