@@ -14,7 +14,7 @@ from its real failures, and given a status that is decided by the checks, never 
 [Limits of verification](#what-verified-does-and-does-not-mean) · [Screenshots](#screenshots) · [Architecture](#architecture) ·
 [Stack](#technology-stack) · [Prerequisites](#prerequisites) · [Installation](#installation) · [Configuration](#environment-configuration) ·
 [Backend](#start-the-backend) · [Frontend](#start-the-frontend) · [Tests](#run-the-tests) · [Generate and export](#generate-and-export-a-skill) ·
-[Demo Mode](#demo-mode) · [Limitations and roadmap](#limitations-and-roadmap) · [Repository](#repository-structure) · [License](#contributing-and-license)
+[API](#api-endpoints) · [Security model](#security-model) · [Demo Mode](#demo-mode) · [Limitations and roadmap](#limitations-and-roadmap) · [Repository](#repository-structure) · [License](#contributing-and-license)
 
 ## Vision
 
@@ -211,6 +211,7 @@ cp .env.example apps/api/.env   # never commit it
 | `LLM_MODEL` | `qwen2.5-coder:latest` | model used for generation |
 | `STORAGE_DIR` | `data` | where Skill packages are stored |
 | `SANDBOX_IMAGE` | `python:3.12-slim` | sandbox image |
+| `STUDIO_LOCAL_ONLY` | `true` | Studio routes answer loopback clients only |
 
 Demo Mode uses `DEMO_*` variables in `apps/api/.env.demo` ([template](apps/api/.env.demo.example)).
 
@@ -244,7 +245,9 @@ cd packages/sdk-python && PYTHONPATH=. python -m pytest tests -q   # Python SDK
 cd apps/api && .venv/Scripts/python.exe -u scripts/e2e_real_ollama.py   # real model + sandbox + independent oracle
 ```
 
-Latest results and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
+Results of 2026-11-16 on this branch: backend 330 passed, UGREEN Skill 29, SDK 6, Vitest 90, production build OK,
+Playwright 69 passed and 1 environmental failure (Windows Application Control), Demo Mode 16 passed.
+Details, skips and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
 
 ## Generate and export a Skill
 
@@ -256,6 +259,33 @@ Latest results and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
 
 Generated Skills can also be called through the local `/v1` API with an API key, or the Python SDK in
 `packages/sdk-python`.
+
+## API endpoints
+
+| Route | Access | Purpose |
+|---|---|---|
+| `POST /studio/skills/plan`, `POST /studio/skills/generate`, `GET /studio/jobs/{id}` | Studio (local) | plan and generate a Skill, follow the job |
+| `GET /studio/skills`, `GET /studio/versions/{id}`, `POST /studio/versions/{id}/validate` | Studio (local) | list Skills, read a version and its report, revalidate |
+| `GET /studio/versions/{id}/export/{target}`, `GET /studio/versions/{id}/install/{target}` | Studio (local) | ZIP and install commands (`claude-code`, `codex`, `cursor`, `canonical`) |
+| `POST /studio/api-keys`, `GET /studio/audit`, `GET /studio/evaluations` | Studio (local) | API keys, audit log, evaluation history |
+| `GET /studio/agents`, `GET /studio/events`, WebSocket | Studio (local) | live pipeline roles and events |
+| `GET /v1/skills`, `POST /v1/skills/{slug}/run`, `GET /v1/runs/{id}` | `Authorization: Bearer <API key>` | run a stored Skill in the sandbox |
+| `GET /health`, `GET /health/ready` | open | liveness, readiness |
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/skills/<slug>/run -H "Authorization: Bearer <your-api-key>"      -H "content-type: application/json" -d '{"input": {}}'
+```
+
+## Security model
+
+- Studio routes serve the local machine only and refuse cross-site browser requests; there are no user accounts.
+- Generated code runs only in the Docker sandbox: no network, read-only file system, non-root, all capabilities
+  dropped, CPU, memory, process and time limits. It never runs on the host.
+- Static checks reject unsafe instructions, secrets and risky Python before execution (a quality gate, not a
+  security boundary).
+- API keys are stored hashed and can be revoked; Skill runs are logged.
+- Demo Mode is a separate process with its own data and limits; it has no admin, install or `/v1` routes.
+- Details and open risks: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Demo Mode
 
@@ -283,8 +313,10 @@ Full list: [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Roadmap: [doc
 
 [hackathons/ugreen-2026/](hackathons/ugreen-2026/) contains **NAS Project Memory**, a Skill written during the
 UGREEN Hackathon 2026 on AI NAS in UGREEN's own Skill format (Markdown that delegates to NAS experts). It is
-independent from the code in this repository; applying AI Agent Builder's verification approach to UGREEN Skills is
-future work.
+independent from the code in this repository. **NAS integration status: none.** The Skill has passed the official
+static checker but has not run on a UGREEN NAS (finalists get one remote-access day on a UGREEN AI NAS); no code in
+this branch connects to a NAS. A local simulation harness for the Skill's workflow is on the branch
+`feature/nas-project-memory-runtime`.
 
 ## Repository structure
 
