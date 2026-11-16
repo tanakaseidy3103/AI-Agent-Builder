@@ -27,6 +27,8 @@ Audit date: 2026-11-06, updated 2026-11-11 (security hardening audit). This desc
   frame/`__builtins__`/`__subclasses__` introspection, `shutil`/`tempfile`, pathlib write/delete methods and `open()`
   with a write or non-literal mode. It is still an AST check of a dynamic language and can be bypassed by
   sufficiently indirect code; it gives early feedback and does not make arbitrary code safe.
+  Since 2026-11-14 it also rejects an entrypoint that reads the file system (`code.inputs_from_data`): a quality rule
+  (inputs come from `data`), not an isolation control; the sandbox filesystem is read-only either way.
 - **`verified` is a quality signal, not a security guarantee.** Skill code can forge the unit-test results (tests and
   code share a process) and the result line. What it cannot do any more is see eval expectations: to pass the eval
   criterion, including the holdout case, its outputs must really match expectations held on the host.
@@ -42,10 +44,18 @@ Audit date: 2026-11-06, updated 2026-11-11 (security hardening audit). This desc
 | Audit log has no retention or export policy | — | open |
 | Vite dev server must not be exposed (`vite --host`) | the proxy makes remote requests look local to the Studio | documented; production should serve the built app |
 | Docker socket is required on the host for the sandbox | whoever runs the API controls Docker | by design; never mount the socket into the API container |
+| Sandbox failure classes | a Skill could print Docker-like error text and exit 125 to look like an infrastructure fault | accepted: the only effect is `unavailable` (never `verified`); `sys.exit()` inside Skill code is caught by the runner, so this needs deliberate effort and gains nothing |
+| API image build context | `.env`, `.env.demo` and Skill data were copied into the image by `COPY . .` | **fixed 2026-11-14** in `apps/api/.dockerignore` (verified with a test build) |
+| API image user | ran as root | **fixed 2026-11-14**: uid 10001, writes only `/data` (verified: `/app` not writable, container healthy) |
+| Demo stage details and live events | carried raw failure text, e.g. the model server's address, to the visitor who owns the job | **fixed 2026-11-14**: same sanitizing as job errors (`test_model_failure_never_reveals_the_model_server_in_stages_or_events`) |
+| Remote model server | Ollama has no authentication | `OLLAMA_API_KEY` sends a Bearer key to an authenticating proxy (`deploy/ollama-proxy.Caddyfile.example`, only chat/tags/ps forwarded); key never logged or shown (`test_api_key_is_sent_on_every_model_server_call_and_never_in_errors`). Never expose 11434 directly |
+| `/health/ready` on the public demo | reveals whether the database, sandbox image and model are up | accepted: booleans only, no versions or error text, cached 10 s so it cannot be used to spawn `docker` processes |
 
-## Dependency audit (2026-11-06)
+## Dependency audit (2026-11-14; previous: 2026-11-06)
 
-- `npm audit` (all workspaces): 0 vulnerabilities.
-- `uvx pip-audit` on the locked API dependencies (`uv export --frozen`): no known vulnerabilities.
+- `npm audit` (apps/web, including dev dependencies): 0 vulnerabilities.
+- `uvx pip-audit` on the locked API dependencies (`uv export --frozen --no-dev`): no known vulnerabilities.
+- Secret scan (2026-11-14) of tracked and untracked, non-ignored files: only the fake credentials in
+  `apps/api/tests/test_validation.py` (test data for the detector). `apps/api/.env` and `.env.demo` are git-ignored.
 - Python SDK: no dependencies.
 - Secret scan of all Git history (Anthropic/OpenAI/GitHub tokens, AWS keys, private keys): 0 matches.

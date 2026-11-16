@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api import office, public, studio
 from app.config import settings
-from app.db import SessionLocal
+from app.db import SessionLocal, get_session_factory
+from app.readiness import readiness
 from app.skills.pipeline import fail_interrupted_jobs
 
 
@@ -80,3 +82,10 @@ app.include_router(office.router)
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/health/ready")
+def health_ready(factory=Depends(get_session_factory)) -> JSONResponse:
+    """Dependencies of the pipeline (database, Docker sandbox image, local model). 503 only when the database is down."""
+    code, body = readiness(factory)
+    return JSONResponse(body, status_code=code)

@@ -1,0 +1,35 @@
+# systemd unit for the PUBLIC DEMO API on a Linux backend machine (see docs/DEPLOY.md).
+#   sudo cp deploy/aab-demo.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#   sudo systemctl enable --now aab-demo && journalctl -u aab-demo -f
+#
+# Assumptions (adjust paths): repository at /opt/aab, virtualenv at /opt/aab/apps/api/.venv (uv sync --frozen --no-dev),
+# a dedicated user `aab` that is in the `docker` group (needed to start sandbox containers). Being in the docker group
+# is equivalent to root on this machine: use a machine dedicated to the demo.
+[Unit]
+Description=AI Agent Builder public demo API
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+User=aab
+Group=aab
+WorkingDirectory=/opt/aab/apps/api
+# DEMO_* plus OLLAMA_BASE_URL, OLLAMA_API_KEY, SANDBOX_IMAGE. Mode 600, owned by aab. Never committed.
+EnvironmentFile=/etc/aab/demo.env
+# 127.0.0.1 only: the tunnel / reverse proxy on this machine is the only client, so uvicorn's proxy headers (trusted
+# from 127.0.0.1 by default) give the visitor's real IP for the per-IP limits. Never bind 0.0.0.0 or trust "*".
+ExecStart=/opt/aab/apps/api/.venv/bin/uvicorn app.demo.app:app --host 127.0.0.1 --port 8100 --workers 1
+# one worker: queue, limits and rate limiter live in the process
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/aab/apps/api/data-demo
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

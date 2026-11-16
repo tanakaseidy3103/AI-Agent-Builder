@@ -76,3 +76,59 @@ def test_running_models_reports_gpu_share(monkeypatch):
     def down(*a, **k): raise httpx.ConnectError("x")
     monkeypatch.setattr(httpx, "get", down)
     assert llm.running_models() == []
+
+
+# ---- remote model server behind an authenticating proxy (settings.ollama_api_key, 2026-11-14) ----
+
+class _Resp:
+    status_code = 200
+
+    def __init__(self, body):
+        self._body = body
+
+    def json(self):
+        return self._body
+
+    @property
+    def text(self):
+        return str(self._body)
+
+    def raise_for_status(self):
+        return None
+
+
+def test_api_key_is_sent_on_every_model_server_call_and_never_in_errors(monkeypatch):
+    import httpx as _httpx
+    from app import llm as _llm, readiness as _readiness
+    monkeypatch.setattr(_llm.settings, "ollama_api_key", "k-secret-123")
+    seen = []
+
+    def post(url, json=None, timeout=None, headers=None):
+        seen.append(("post", url, headers))
+        return _Resp({"message": {"content": "hello"}, "done_reason": "stop"})
+
+    def get(url, timeout=None, headers=None):
+        seen.append(("get", url, headers))
+        return _Resp({"models": [{"name": "m"}]})
+    monkeypatch.setattr(_httpx, "post", post)
+    monkeypatch.setattr(_httpx, "get", get)
+    assert _llm.OllamaProvider("https://model.example", "m").complete("s", "u") == "hello"
+    _llm.installed_models()
+    assert _readiness.model_ok("https://model.example")
+    assert seen and all(h == {"Authorization": "Bearer k-secret-123"} for _, _, h in seen)
+
+    def refused(*a, **k):
+        raise _httpx.ConnectError("refused")
+    monkeypatch.setattr(_httpx, "post", refused)
+    try:
+        _llm.OllamaProvider("https://model.example", "m").complete("s", "u")
+    except _llm.LLMError as e:
+        assert "k-secret-123" not in str(e)
+    else:
+        raise AssertionError("expected LLMError")
+
+
+def test_no_auth_header_for_a_local_model_server(monkeypatch):
+    from app import llm as _llm
+    monkeypatch.setattr(_llm.settings, "ollama_api_key", "")
+    assert _llm.ollama_headers() == {}

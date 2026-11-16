@@ -7,6 +7,17 @@ import httpx
 from app.config import settings
 
 
+def ollama_headers() -> dict[str, str]:
+    """Auth header for a remote model server behind a proxy (settings.ollama_api_key); none for a local Ollama."""
+    return {"Authorization": f"Bearer {settings.ollama_api_key}"} if settings.ollama_api_key else {}
+
+
+def ollama_auth() -> dict:
+    """httpx keyword arguments: `headers` only when a key is set, so calls to a local Ollama are unchanged."""
+    h = ollama_headers()
+    return {"headers": h} if h else {}
+
+
 class LLMError(RuntimeError):
     """Model unavailable or returned unusable output. Message is safe to show the user."""
 
@@ -40,7 +51,7 @@ class OllamaProvider:
         if fmt is not None:
             body["format"] = fmt  # Ollama structured outputs (JSON schema)
         try:
-            r = httpx.post(f"{self._url}/api/chat", json=body, timeout=self._timeout)
+            r = httpx.post(f"{self._url}/api/chat", json=body, timeout=self._timeout, **ollama_auth())
         except httpx.TimeoutException as e:
             raise LLMError(f"Ollama timed out after {self._timeout:.0f}s ({self._model})") from e
         except httpx.HTTPError as e:
@@ -112,7 +123,7 @@ def usage_summary(calls: list[dict]) -> dict | None:
 def running_models() -> list[dict]:
     """What Ollama has loaded right now and how much of it sits in GPU memory (GET /api/ps). [] when unavailable."""
     try:
-        r = httpx.get(f"{settings.ollama_base_url.rstrip('/')}/api/ps", timeout=5)
+        r = httpx.get(f"{settings.ollama_base_url.rstrip('/')}/api/ps", timeout=5, **ollama_auth())
         r.raise_for_status()
         out = []
         for m in r.json().get("models", []):
@@ -130,7 +141,9 @@ def get_provider() -> LLMProvider:
 def installed_models() -> list[str]:
     """Models the local Ollama has pulled. The only names a request may choose from."""
     try:
-        r = httpx.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags", timeout=5)
+        r = httpx.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags", timeout=5, **ollama_auth())
+        if r.status_code in (401, 403):  # reachable, but the proxy in front of it refused the key
+            raise LLMError(f"model server refused the request (HTTP {r.status_code}): check OLLAMA_API_KEY")
         r.raise_for_status()
         return sorted(m["name"] for m in r.json().get("models", []))
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:

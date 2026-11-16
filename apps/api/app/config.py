@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     database_url: str = "postgresql+psycopg://aab:change-me@127.0.0.1:5433/aab"
     ollama_base_url: str = "http://127.0.0.1:11434"
+    # Optional. For a REMOTE model server behind an authenticating proxy (Ollama itself has no auth): sent as
+    # "Authorization: Bearer <key>" on every call. Empty = no header (local Ollama). Never logged.
+    ollama_api_key: str = ""
     llm_model: str = "qwen2.5-coder:latest"  # benchmark 20261106-075956: 17/35 tests vs 1/44 for llama3.2:3b
     llm_timeout_s: float = 300
     llm_seed: int = 42

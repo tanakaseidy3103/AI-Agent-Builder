@@ -1,0 +1,26 @@
+# Authenticating HTTPS proxy in front of a REMOTE Ollama (a GPU machine or rented pod), so the demo backend does not
+# depend on the owner's laptop. Ollama has no authentication of its own: never expose port 11434 directly.
+# The demo backend sends "Authorization: Bearer <OLLAMA_API_KEY>" (apps/api/app/llm.py) when OLLAMA_API_KEY is set.
+#
+#   On the model machine: Ollama on 127.0.0.1:11434, Caddy with this file, OLLAMA_PROXY_KEY in Caddy's environment.
+#   On the demo backend:   OLLAMA_BASE_URL=https://model.<domain>   OLLAMA_API_KEY=<the same long random value>
+# Simpler alternative when both machines are yours: a private network (WireGuard/Tailscale) and no public endpoint.
+model.<domain> {
+	@authorized header Authorization "Bearer {$OLLAMA_PROXY_KEY}"
+	# only what the API uses: chat, installed models, loaded models (no pull/delete/create)
+	@api path /api/chat /api/tags /api/ps
+	# `handle` blocks are mutually exclusive and keep this order (a bare `respond` would run before reverse_proxy)
+	handle @authorized {
+		handle @api {
+			reverse_proxy 127.0.0.1:11434 {
+				flush_interval -1
+			}
+		}
+		handle {
+			respond 404
+		}
+	}
+	handle {
+		respond 401
+	}
+}

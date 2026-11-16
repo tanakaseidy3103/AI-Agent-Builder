@@ -1,0 +1,11 @@
+# Cloudflare NAMED tunnel for the demo API (stable hostname, HTTPS, no inbound port). Requires a domain on the
+# owner's Cloudflare account. Create it on the backend machine:
+#   cloudflared tunnel login && cloudflared tunnel create aab-demo && cloudflared tunnel route dns aab-demo api.<domain>
+# then copy this file to ~/.cloudflared/config.yml and fill the two placeholders. The credentials JSON stays on the
+# machine; never commit it.
+tunnel: <TUNNEL-UUID>
+credentials-file: /home/aab/.cloudflared/<TUNNEL-UUID>.json
+ingress:
+  - hostname: api.<domain>
+    service: http://127.0.0.1:8100     # the demo API only. Never 8000 (Studio), 5434 (Postgres) or 11434 (Ollama)
+  - service: http_status:404

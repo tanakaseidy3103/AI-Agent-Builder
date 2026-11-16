@@ -1,3 +1,14 @@
 .venv
 __pycache__
 tests
+# Never bake secrets or user data into the image (verified 2026-11-14: before this, `COPY . .` copied them all).
+# Configuration comes from environment variables at run time; data lives in volumes.
+.env
+.env.*
+!.env.demo.example
+data
+data-demo
+*.sqlite
+*.db
+.pytest_cache
+test-results
