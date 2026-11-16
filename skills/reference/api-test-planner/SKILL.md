@@ -20,4 +20,6 @@ python scripts/cli.py input.json
 4. Report `warnings` (operations without a 2xx response, without operationId, required body without schema).
 
 Cases per operation: `happy-path`; `missing-required-field` (when the JSON body has required properties);
-`unknown-id` (when the path has parameters); `no-auth` (when security applies). YAML input must be converted to JSON first.
+`unknown-id` (when the path has parameters); `no-auth` for every operation: expect `401` when security applies, and
+the operation's own 2xx when it is public (a public endpoint must answer without credentials). YAML input must be
+converted to JSON first.

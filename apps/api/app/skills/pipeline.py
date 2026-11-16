@@ -52,6 +52,8 @@ SPEC_SCHEMA = {
         "tools": {"type": "array", "items": {"type": "string"}},
         "permissions": {"type": "array", "items": {"type": "string"}},
         "external_services": {"type": "array", "items": {"type": "string"}},
+        "rules": {"type": "array", "items": {"type": "string"}},
+        "error_cases": {"type": "array", "items": {"type": "string"}},
         "input_schema": {"type": "object"},
         "output_schema": {"type": "object"},
     },
@@ -83,16 +85,25 @@ Return JSON only. Fields:
 - instructions: markdown steps the agent should follow.
 - tools: agent tools needed, e.g. ["Read","Grep"]. permissions: subset of ["compute","read-input-files","llm"].
 - external_services: internet APIs or programs the Skill would need (empty if none). Code Skills cannot use any.
+- rules: the exact behaviour, one checkable statement each (what counts as a match, how results are ordered, what is
+  counted). error_cases: what the Skill returns for empty, missing or malformed input (never crash on them).
 - input_schema/output_schema: JSON Schema. Both MUST be {"type":"object","properties":{...},"required":[...]};
   wrap lists in a property, e.g. {"type":"object","properties":{"findings":{"type":"array"},"count":{"type":"integer"}}}.
-  For Skills that analyze a project, input is {"files": object mapping path -> source text}.
-Code Skills run offline with the Python standard library only: no network, no file writes, no subprocess."""
+- The input carries the DATA ITSELF, never paths: the Skill runs where your paths do not exist. For Skills that
+  analyze files or a project, input is {"files": object mapping path -> file text}; for one document, a string
+  property with its content (e.g. {"csv": "<text>"}). Never {"file_path": ...}.
+Code Skills run offline with the Python standard library only: no network, no file access, no subprocess."""
 
 CODE_SYSTEM = """You write one PYTHON 3.12 module for a Skill. Never JavaScript, even if the Skill analyzes JS/TS:
 source files arrive as plain strings in data["files"], analyze them with `re` and string methods.
 Rules: define top-level `def run(data: dict) -> dict` returning a dict that matches output_schema.
+Everything comes from `data` (file contents are strings in data["files"]); never open paths or list directories.
+Parse standard formats with the standard-library parser, not by splitting strings: csv (quoting, escaped commas),
+json, configparser, tomllib, ast for Python, html.parser for HTML.
+Follow the spec's rules exactly, and its error_cases: empty, missing or malformed input returns a valid result
+(e.g. empty findings, or an "errors" entry if output_schema has one), never an exception.
 Standard library only. Forbidden: subprocess, socket, urllib, http, importlib, os.system, os.environ, eval, exec,
-open() for writing, printing results. Deterministic (no randomness, no time).
+open(), printing results. Deterministic (no randomness, no time).
 Reply with ONLY one fenced code block:
 ```python
 import re
@@ -108,9 +119,18 @@ def run(data: dict) -> dict:
 
 TESTS_SYSTEM = """You write unittest tests from a Skill's SPECIFICATION. You have NOT seen the implementation; it will be
 importable as `from main import run` and must return output matching output_schema.
-Rules: `import unittest`; one TestCase class; at least 3 test_ methods; every method calls self.assert...;
-inputs match input_schema; assert behaviour the specification requires (what must be found, counts, required keys),
-using small inputs whose correct answer is unambiguous; stdlib only; no files, no network.
+Rules:
+- `import unittest` and `from main import run`; one TestCase class; 3 to 6 test_ methods; each calls run(...).
+- Every input is the object input_schema describes, with every required key: run({"files": {"a.py": "x = 1\\n"}}),
+  never run([...]) or run("text"). Data is passed in memory (file contents are strings): no real files, no tempfile.
+- Cover: one case where something must be found; one valid input where nothing is found; one empty or minimal input
+  (e.g. {"files": {}} or an empty string); one edge case of the data format the spec names (quoting or escaping,
+  a trailing newline, a header with no rows, Windows line endings); and, if the spec lists error_cases, one of them.
+- Assert specific facts that follow unambiguously from your small input: counts, file names, line numbers (count
+  lines yourself: line 1 is the first line), presence/absence of an item. Check one fact per assertion.
+- Do NOT compare the whole output with assertEqual against a dict literal, and do not assert wording or messages the
+  spec does not fix. No trivial assertions (assertTrue(True), comparing constants).
+- stdlib only; no network.
 Reply with ONLY one fenced ```python code block."""
 
 # Benchmark C1: correct react-a11y code (right file and line) failed 0/3 eval cases only because expectations demanded
@@ -118,14 +138,19 @@ Reply with ONLY one fenced ```python code block."""
 CASES_SYSTEM = """Write 3 realistic test cases for this Skill from its SPEC (no code exists yet).
 Each case: an input matching input_schema exactly, and the output a CORRECT implementation must contain.
 Use expect.contains with only facts that follow unambiguously from the input (e.g. exact counts, file names, line
-numbers); a subset of the output is enough. Include at least one case where something must be found.
+numbers); a subset of the output is enough, but it must state at least one fact: {} proves nothing and is rejected.
+Include at least one case where something must be found and one where nothing is (state it, e.g. {"count": 0} or
+an empty list, which means "must be empty"). Make one case an edge case of the data format the spec names (quoting
+or escaping, a trailing newline, a header with no rows, Windows line endings).
 NEVER put descriptive text in an expectation (rule names, messages, explanations): a correct implementation cannot
 know your exact wording. For each expected finding give only its identifying facts, e.g. {"file": "a.tsx", "line": 3}.
 Return JSON: {"cases": [{"name": "short-name", "input": {...}, "expect": {"contains": {...}}}, ...]}."""
 
 FIX_SYSTEM = """You repair a generated Skill. You get the spec, the current module (scripts/main.py),
 the current tests (tests/test_main.py) and the exact failures from static checks and an isolated sandbox.
-Fix the module. The tests are FROZEN unless the failures show the test file itself is broken (syntax, policy, too few tests).
+Fix the module. The tests are FROZEN unless the failures show the test file itself is broken (syntax, policy, too few
+or trivial tests, or code.tests_inputs: test inputs that break input_schema). When you rewrite tests, keep every check
+that is correct and only fix the broken ones; never weaken an assertion just to make the code pass.
 Keep all rules: Python 3.12 stdlib only, def run(data: dict) -> dict, ≥3 tests each with an assertion.
 Reply with exactly TWO fenced ```python blocks: first the full scripts/main.py, then the full tests/test_main.py."""
 
@@ -285,6 +310,11 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
     version = "0.1.0" if skill is None else f"0.{len(skill.versions) + 1}.0"  # new version, never overwrite
     m = build_manifest(spec, slug, version)
     instructions = str(spec.get("instructions") or m.description)
+    # the spec's rules and error cases are part of the contract: document them in SKILL.md for the agent and the user
+    for title, key in (("Rules", "rules"), ("When the input is empty or invalid", "error_cases")):
+        items = [str(x).strip() for x in spec.get(key) or [] if isinstance(x, str) and x.strip()]
+        if items:
+            instructions += f"\n\n## {title}\n\n" + "\n".join(f"- {x}" for x in items)
     t.done("specify", detail=f"{m.id}@{m.version}; kind={m.kind}; permissions={m.permissions}")
 
     t.start("plan")
@@ -292,8 +322,11 @@ def _pipeline(s: Session, job: GenerationJob, t: Tracker, provider: LLMProvider)
     plan = list(files) + (["scripts/main.py", "tests/test_main.py", "evals/cases.json"] if m.kind == "code" else [])
     t.done("plan", detail=", ".join(dict.fromkeys(plan)))
 
+    rules = "".join(f"\n- {r}" for r in spec.get("rules") or [] if isinstance(r, str))
+    errors = "".join(f"\n- {r}" for r in spec.get("error_cases") or [] if isinstance(r, str))
     ctx = (f"Skill: {m.name}\nDescription: {m.description}\nInstructions:\n{instructions}\n"
-           f"input_schema: {json.dumps(m.input_schema)}\noutput_schema: {json.dumps(m.output_schema)}")
+           + (f"Rules:{rules}\n" if rules else "") + (f"Error cases:{errors}\n" if errors else "")
+           + f"input_schema: {json.dumps(m.input_schema)}\noutput_schema: {json.dumps(m.output_schema)}")
     code = tests = None
     cases: list = []
     t.start("generate_files")

@@ -287,17 +287,30 @@ def validate_package(files: dict[str, str]) -> tuple[list[Check], Manifest | Non
             has_run = tree is not None and any(isinstance(n, ast.FunctionDef) and n.name == "run" for n in tree.body)
             add("code.entrypoint", "pass" if has_run else "fail",
                 f"{ex.entrypoint} defines run(data)" if has_run else f"{ex.entrypoint} must define top-level run(data: dict) -> dict")
+            if tree is not None:
+                reads = _filesystem_reads(tree)
+                add("code.inputs_from_data", "fail" if reads else "pass",
+                    f"{ex.entrypoint} reads the file system: {', '.join(reads)}" if reads
+                    else "reads its input only from data (no file-system access)")
         test_dir = manifest.tests.path if manifest.tests else "tests"
         test_files = [p for p in py_files if p.startswith(f"{test_dir}/") and PurePosixPath(p).name.startswith("test")]
         methods = [m for p in test_files if p in trees for m in _test_methods(trees[p])]
         empty = [name for name, n_asserts in methods if n_asserts == 0]
+        idle = [m for p in test_files if p in trees for m in _tests_not_calling_run(trees[p])]
         if not test_files:
             add("code.tests", "fail", "code Skills need tests/test_*.py to be verifiable")
-        elif len(methods) < MIN_TESTS or empty:
-            add("code.tests", "fail", f"{len(methods)} test method(s); need ≥{MIN_TESTS}, each with an assertion"
-                + (f"; without assertions: {empty}" if empty else ""))
+        elif len(methods) < MIN_TESTS or empty or idle:
+            add("code.tests", "fail", f"{len(methods)} test method(s); need ≥{MIN_TESTS}, each calling run() and "
+                "asserting something about its result"
+                + (f"; without assertions (none, or only constants like assertTrue(True)): {empty}" if empty else "")
+                + (f"; never call run(): {idle}" if idle else ""))
         else:
             add("code.tests", "pass", f"{len(methods)} test methods with assertions")
+        if test_files:
+            bad_inputs = [v for p in test_files if p in trees for v in _test_input_violations(trees[p], manifest.input_schema)]
+            add("code.tests_inputs", "fail" if bad_inputs else "pass",
+                ("tests call run() with input that breaks input_schema: " + "; ".join(bad_inputs))[:500] if bad_inputs
+                else "every literal run() input in the tests matches input_schema")
         _check_evals(files, manifest, add)
     elif py_files:
         add("instructions.no_code", "warn", f"instruction-only Skill contains Python files: {py_files}")
@@ -310,14 +323,115 @@ MIN_EVAL_CASES = 2
 EVALS_PATH = "evals/cases.json"
 
 
+def _is_assertion(x: ast.AST) -> bool:
+    return isinstance(x, ast.Assert) or (
+        isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) and x.func.attr.startswith(("assert", "fail")))
+
+
+def _trivial_assertion(x: ast.AST) -> bool:
+    """`assert True`, `self.assertTrue(1)`, `self.assertEqual(2, 2)`: only constants, so it checks nothing."""
+    if isinstance(x, ast.Assert):
+        return isinstance(x.test, ast.Constant)
+    args = [*x.args, *(k.value for k in x.keywords if k.arg != "msg")] if isinstance(x, ast.Call) else []
+    return bool(args) and all(isinstance(a, ast.Constant) for a in args) and not x.func.attr.startswith("fail")
+
+
+def _calls(node: ast.AST, names: set[str]) -> bool:
+    """Calls one of `names` directly (`run(...)`, `main.run(...)`) or as a method (`self.helper(...)`)."""
+    for x in ast.walk(node):
+        if isinstance(x, ast.Call):
+            f = x.func
+            if (isinstance(f, ast.Name) and f.id in names) or (isinstance(f, ast.Attribute) and f.attr in names):
+                return True
+    return False
+
+
 def _test_methods(tree: ast.AST) -> list[tuple[str, int]]:
+    """(name, number of non-trivial assertions) per test method."""
     out = []
     for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
         for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name.startswith("test")):
-            n = sum(1 for x in ast.walk(fn) if isinstance(x, ast.Assert) or (
-                isinstance(x, ast.Call) and isinstance(x.func, ast.Attribute) and x.func.attr.startswith(("assert", "fail"))))
-            out.append((fn.name, n))
+            out.append((fn.name, sum(1 for x in ast.walk(fn) if _is_assertion(x) and not _trivial_assertion(x))))
     return out
+
+
+def _tests_not_calling_run(tree: ast.AST) -> list[str]:
+    """Test methods that never exercise run(): not directly, not through a helper (module function or method of the
+    class) that calls it, and not through setUp/setUpClass. Such a test cannot fail because of the Skill's code."""
+    helpers = {"run"}
+    module_fns = [n for n in getattr(tree, "body", []) if isinstance(n, ast.FunctionDef)]
+    for _ in range(3):  # helpers that call helpers, a few levels deep
+        helpers |= {f.name for f in module_fns if _calls(f, helpers)}
+    out = []
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        methods = [n for n in cls.body if isinstance(n, ast.FunctionDef)]
+        local = set(helpers)
+        for _ in range(3):
+            local |= {m.name for m in methods if not m.name.startswith("test") and _calls(m, local)}
+        if any(m.name in ("setUp", "setUpClass") and _calls(m, local) for m in methods):
+            continue  # every test of this class works on the output setUp computed
+        out += [m.name for m in methods if m.name.startswith("test") and not _calls(m, local)]
+    return out
+
+
+def _literal(node: ast.AST, bound: dict[str, object]) -> tuple[bool, object]:
+    if isinstance(node, ast.Name) and node.id in bound:
+        return True, bound[node.id]
+    try:
+        return True, ast.literal_eval(node)
+    except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+        return False, None
+
+
+def _test_input_violations(tree: ast.AST, input_schema: dict) -> list[str]:
+    """RC-1a (audits/real-llm-recovery/03): a test calls run() with an input that breaks the Skill's own input_schema
+    (e.g. a list where the schema says object), so it fails whatever the code does. Only literal inputs, or names bound
+    to literals in the same method, are checked: never executed (ast.literal_eval), nothing guessed."""
+    from app.skills.jsonschema_lite import validate as schema_validate
+    out = []
+    for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
+        for fn in (n for n in cls.body if isinstance(n, ast.FunctionDef)):
+            bound: dict[str, object] = {}
+            for st in ast.walk(fn):
+                if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+                    ok, value = _literal(st.value, {})
+                    if ok:
+                        bound[st.targets[0].id] = value
+            for call in (x for x in ast.walk(fn) if isinstance(x, ast.Call) and x.args):
+                f = call.func
+                if not ((isinstance(f, ast.Name) and f.id == "run") or (isinstance(f, ast.Attribute) and f.attr == "run")):
+                    continue
+                ok, value = _literal(call.args[0], bound)
+                if not ok:
+                    continue
+                errors = schema_validate(input_schema, value)
+                if errors:
+                    out.append(f"{fn.name} (line {call.lineno}): {errors[0]}")
+    return out
+
+
+# File-system access in the entrypoint. A code Skill receives everything it analyses in `data` (for projects:
+# data["files"] = {path: text}); code that opens paths depends on files that do not exist where the Skill runs.
+# Only names tied to the file system: `ast.walk` or a dict's methods must not be confused with `os.walk`.
+FS_READ_CALLS = {"open"}
+FS_MODULE_ATTRS = {"os": {"walk", "listdir", "scandir", "stat"}, "glob": {"glob", "iglob"},
+                   "path": {"exists", "isfile", "isdir", "getsize"}}  # os.path.<x>
+FS_PATH_METHODS = {"read_text", "read_bytes", "iterdir", "rglob", "is_file", "is_dir"}  # pathlib.Path
+
+
+def _filesystem_reads(tree: ast.AST) -> list[str]:
+    found = set()
+    for x in ast.walk(tree):
+        if not isinstance(x, ast.Call):
+            continue
+        f = x.func
+        if isinstance(f, ast.Name) and f.id in FS_READ_CALLS:
+            found.add(f"{f.id}() (line {x.lineno})")
+        elif isinstance(f, ast.Attribute):
+            owner = f.value.id if isinstance(f.value, ast.Name) else f.value.attr if isinstance(f.value, ast.Attribute) else None
+            if f.attr in FS_PATH_METHODS or f.attr in FS_MODULE_ATTRS.get(owner or "", ()):
+                found.add(f"{owner + '.' if owner else ''}{f.attr}() (line {x.lineno})")
+    return sorted(found)
 
 
 def load_cases(files: dict[str, str]) -> list[dict]:
@@ -325,6 +439,14 @@ def load_cases(files: dict[str, str]) -> list[dict]:
     if not isinstance(data, list):
         raise ValueError("evals/cases.json must be a JSON list")
     return data
+
+
+def _has_fact(expected: object) -> bool:
+    """Whether an expectation states anything. {} (or dicts of {}) matches every dict; a list, even empty, is a fact
+    (an empty list means "nothing found", see jsonschema_lite.contains); any scalar is a fact."""
+    if isinstance(expected, dict):
+        return any(_has_fact(v) for v in expected.values())
+    return True
 
 
 def _check_evals(files: dict[str, str], manifest: Manifest, add) -> None:
@@ -344,6 +466,10 @@ def _check_evals(files: dict[str, str], manifest: Manifest, add) -> None:
             continue
         problems += [f"{c['name']}: {e}" for e in schema_validate(manifest.input_schema, c["input"])]
         exp = c.get("expect")
+        if isinstance(exp, dict) and any(m in exp and not _has_fact(exp[m]) for m in ("equals", "contains")):
+            # {"contains": {}} matches every output: the case would pass for any code, so it proves nothing
+            problems.append(f"{c['name']}: expectation is empty; state at least one fact the output must contain")
+            continue
         if exp is None and manifest.origin == "generated":
             # without an expectation a case only proves "runs", not "correct" (AI-1)
             problems.append(f"{c['name']}: generated cases need expect.contains derived from the spec")
@@ -381,7 +507,12 @@ HINTS = {
                       "imports. The Skill cannot run external programs or linters (e.g. phpstan, eslint): implement the "
                       "analysis in pure Python by reading the source text with re/ast/json."),
     "code.entrypoint": "scripts/main.py must define a top-level def run(data: dict) -> dict.",
-    "code.tests": f"Add tests/test_main.py with ≥{MIN_TESTS} unittest methods, each asserting something.",
+    "code.tests": (f"Add tests/test_main.py with ≥{MIN_TESTS} unittest methods; each must call run() (directly, through "
+                   "a helper or in setUp) and assert a specific fact about the result, not only constants."),
+    "code.tests_inputs": ("Test inputs must match input_schema exactly: pass the declared object (e.g. "
+                          "run({\"files\": {\"a.py\": \"...\"}})), never a bare list or string, and include every required key."),
+    "code.inputs_from_data": ("Read everything from the data argument (for projects: data[\"files\"] maps path -> text). "
+                              "Do not open paths or list directories: those files do not exist where the Skill runs."),
     "code.evals": f"Add {EVALS_PATH}: ≥{MIN_EVAL_CASES} cases with name, input matching input_schema, optional expect.",
 }
 

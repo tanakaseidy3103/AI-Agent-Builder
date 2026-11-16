@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Skill, SkillVersion, ValidationRun, audit
@@ -26,25 +27,39 @@ def load_reference(path: Path) -> dict[str, str]:
     return files
 
 
+def _existing(s: Session, m: dict) -> dict | None:
+    v = s.scalar(select(SkillVersion).join(Skill).where(Skill.slug == m["id"], SkillVersion.version == m["version"]))
+    return None if v is None else {"slug": m["id"], "version": m["version"], "status": v.status, "version_id": v.id, "seeded": False}
+
+
 def seed(s: Session, root: Path = REFERENCE_DIR) -> list[dict]:
     out = []
     for d in sorted(p for p in root.iterdir() if p.is_dir()):
         files = load_reference(d)
         m = json.loads(files["manifest.json"])
-        skill = s.scalar(select(Skill).where(Skill.slug == m["id"]))
-        if skill and any(v.version == m["version"] for v in skill.versions):
-            v = next(v for v in skill.versions if v.version == m["version"])
-            out.append({"slug": m["id"], "version": m["version"], "status": v.status, "version_id": v.id, "seeded": False})
+        if (existing := _existing(s, m)) is not None:
+            out.append(existing)
             continue  # versions are immutable; bump the manifest version to re-seed
-        status, report = full_validation(files, REFERENCE_MODEL)
-        if skill is None:
-            skill = Skill(slug=m["id"], name=m["name"], description=m["description"])
-            s.add(skill)
+        status, report = full_validation(files, REFERENCE_MODEL)  # seconds in the sandbox: another seed may finish first
+        try:
+            skill = s.scalar(select(Skill).where(Skill.slug == m["id"]))
+            if skill is None:
+                skill = Skill(slug=m["id"], name=m["name"], description=m["description"])
+                s.add(skill)
+                s.flush()
+            v = SkillVersion(skill_id=skill.id, version=m["version"], kind=m["kind"], status=status, manifest=m,
+                             storage_key="", file_count=len(files))
+            s.add(v)
             s.flush()
-        v = SkillVersion(skill_id=skill.id, version=m["version"], kind=m["kind"], status=status, manifest=m,
-                         storage_key="", file_count=len(files))
-        s.add(v)
-        s.flush()
+        except IntegrityError:
+            # 2026-11 audit: two concurrent seeds both passed the existence check and the second answered HTTP 500
+            # (UNIQUE skills.slug). The other request stored this exact version; report it like any already-seeded one.
+            s.rollback()
+            existing = _existing(s, m)
+            if existing is None:
+                raise
+            out.append(existing)
+            continue
         v.storage_key = v.id
         storage.write_package(v.storage_key, files)
         s.add(ValidationRun.from_report(v.id, status, report))

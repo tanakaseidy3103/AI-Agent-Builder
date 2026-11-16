@@ -6,6 +6,7 @@ wall-clock timeout, and an empty environment (host env vars are never forwarded)
 """
 import io
 import json
+import re
 import subprocess
 import tarfile
 import threading
@@ -40,7 +41,7 @@ if mode == "test":
     class R(unittest.TextTestResult):
         def addSuccess(self, t): super().addSuccess(t); results.append({"name": t.id(), "status": "pass", "detail": ""})
         def addFailure(self, t, e): super().addFailure(t, e); results.append({"name": t.id(), "status": "fail", "detail": self._exc_info_to_string(e, t)[-2000:]})
-        def addError(self, t, e): super().addError(t, e); results.append({"name": str(t), "status": "error", "detail": self._exc_info_to_string(e, t)[-2000:]})
+        def addError(self, t, e): super().addError(t, e); results.append({"name": t.id(), "status": "error", "detail": self._exc_info_to_string(e, t)[-2000:]})
         def addSkip(self, t, r): super().addSkip(t, r); results.append({"name": t.id(), "status": "skip", "detail": r})
     unittest.TextTestRunner(stream=io.StringIO(), resultclass=R).run(suite)
     emit({"tests": results})
@@ -60,7 +61,7 @@ if mode == "eval":
         cases = json.load(f)
     try:
         mod = load(entry)
-    except Exception as e:
+    except BaseException as e:  # incl. SystemExit from module-level code: report it, never die without a result
         emit({"load_error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-2000:]})
     out = []
     for case in cases:
@@ -71,7 +72,7 @@ if mode == "eval":
             with contextlib.redirect_stdout(buf):
                 for _ in range(2):  # twice: determinism check happens on the host
                     rec["outputs"].append(json.loads(json.dumps(mod.run(copy.deepcopy(case["input"])))))
-        except Exception as e:
+        except BaseException as e:  # SystemExit/KeyboardInterrupt from run() are that case's error, not a lost run
             rec["error"] = f"{type(e).__name__}: {e}"
             rec["trace"] = traceback.format_exc()[-1500:]
         rec["duration_ms"] = int((time.perf_counter() - t0) * 1000)
@@ -88,7 +89,7 @@ else:
         if not isinstance(out, dict):
             raise TypeError("run() must return a dict")
         emit({"ok": True, "output": out})
-    except Exception as e:
+    except BaseException as e:
         emit({"ok": False, "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-2000:]})
 '''
 
@@ -103,11 +104,17 @@ class SandboxUnavailable(RuntimeError):
     pass
 
 
+# Why a run produced no result. Lets reports, the repair loop and the UI tell a defect in the Skill's code
+# (timeout, memory) apart from a broken result channel. Infrastructure faults raise SandboxUnavailable instead.
+ErrorKind = str  # "timeout" | "memory" | "no_result" | "malformed_result"
+
+
 @dataclass
 class SandboxResult:
     ok: bool
     data: dict = field(default_factory=dict)
     error: str | None = None
+    kind: ErrorKind | None = None
     duration_ms: int = 0
     stdout_tail: str = ""
     stderr_tail: str = ""
@@ -195,7 +202,8 @@ def execute(files: dict[str, str], args: list[str], *, input_data: dict | None =
         proc.wait()
         for t in threads:
             t.join(5)
-        return SandboxResult(False, error=f"timeout after {timeout_s}s", duration_ms=int((time.monotonic() - start) * 1000))
+        return SandboxResult(False, error=f"timeout after {timeout_s}s", kind="timeout",
+                             duration_ms=int((time.monotonic() - start) * 1000))
     for t in threads:
         t.join(5)
     duration = int((time.monotonic() - start) * 1000)
@@ -205,21 +213,38 @@ def execute(files: dict[str, str], args: list[str], *, input_data: dict | None =
     err = raw_err.decode("utf-8", "replace")
     if "Cannot connect to the Docker daemon" in err or "dockerDesktopLinuxEngine" in err:
         raise SandboxUnavailable("Docker daemon is not running")
+    if line_is_missing(out) and proc.returncode in DOCKER_RUN_FAILED and DOCKER_ERROR.search(err):
+        # docker itself failed (missing image, daemon error, bad runtime): not the Skill's fault, and no rewrite of
+        # its code can fix it. Reported as unavailable so the repair loop stops and the status is never `verified`.
+        raise SandboxUnavailable(f"docker run failed (exit {proc.returncode}): {err.strip()[-300:]}")
     lines = out.rstrip("\n").splitlines()
     line = lines[-1] if lines and lines[-1].startswith(MARKER) else None  # only the final line counts
     if line is None:
         reason = {124: f"timeout after {timeout_s}s", 137: "killed (memory limit)"}.get(
             proc.returncode, f"no result (exit {proc.returncode})")
+        kind = {124: "timeout", 137: "memory"}.get(proc.returncode, "no_result")
         if out_total > MAX_STDOUT_BYTES:
             reason += f"; output truncated ({out_total} bytes written, last {MAX_STDOUT_BYTES} kept)"
-        return SandboxResult(False, error=reason,
+        return SandboxResult(False, error=reason, kind=kind,
                              duration_ms=duration, stdout_tail=out[-2000:], stderr_tail=err[-2000:])
     try:
         data = json.loads(line[len(MARKER):])
     except json.JSONDecodeError:
-        return SandboxResult(False, error="malformed result line", duration_ms=duration,
+        return SandboxResult(False, error="malformed result line", kind="malformed_result", duration_ms=duration,
                              stdout_tail=out[-2000:], stderr_tail=err[-2000:])
     return SandboxResult(True, data, duration_ms=duration, stdout_tail=out[-2000:], stderr_tail=err[-2000:])
+
+
+# `docker run` exits 125 when the daemon or image fails, 126/127 when the container command cannot run. The marker check
+# plus docker's own error text keep a Skill that calls sys.exit(125) from being mistaken for an infrastructure fault.
+DOCKER_RUN_FAILED = {125, 126, 127}
+DOCKER_ERROR = re.compile(r"(^|\n)docker: |Error response from daemon|Unable to find image|pull access denied|"
+                          r"OCI runtime (create|exec) failed|executable file not found")
+
+
+def line_is_missing(out: str) -> bool:
+    lines = out.rstrip("\n").splitlines()
+    return not (lines and lines[-1].startswith(MARKER))
 
 
 def _without_evals(files: dict[str, str]) -> dict[str, str]:

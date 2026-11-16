@@ -31,8 +31,10 @@ class TestPlanner(unittest.TestCase):
         self.assertEqual((t["expect_status"], t["request"]["omitted"]), ("422", "name"))
 
     def test_security_inheritance_and_override(self):
-        self.assertIn("getItem:no-auth", self.ids)
-        self.assertFalse(any(i.startswith("delete-items-id:no-auth") for i in self.ids))
+        by_id = {t["id"]: t for t in self.out["tests"]}
+        self.assertEqual(by_id["getItem:no-auth"]["expect_status"], "401")  # inherits the global security
+        # `security: []` makes DELETE public: without credentials it must succeed with its own 2xx (204), not 401
+        self.assertEqual(by_id["delete-items-id:no-auth"]["expect_status"], "204")
 
     def test_warnings_for_missing_operation_id(self):
         self.assertIn("DELETE /items/{id}: no operationId", self.out["warnings"])

@@ -3,7 +3,7 @@
   "id": "api-test-planner",
   "name": "API Test Planner",
   "description": "Turns an OpenAPI 3 document into a concrete API test plan: happy path, missing required body fields, unknown path ids and missing authentication for every operation, plus contract warnings. Use before writing or reviewing API tests.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "kind": "code",
   "tools": ["Read", "Bash"],
   "dependencies": [],

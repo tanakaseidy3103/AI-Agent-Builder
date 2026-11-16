@@ -45,9 +45,13 @@ def validate(schema: object, value: object, path: str = "$") -> list[str]:
 
 
 def contains(expected: object, actual: object) -> bool:
-    """Recursive subset match: dict keys must match; each expected list item must match some actual item."""
+    """Recursive subset match: dict keys must match; each expected list item must match some actual item.
+    An EMPTY expected list means the actual list must be empty: `{"findings": []}` says "nothing is found". As a plain
+    subset it matched every list, so a "clean input" case passed even when the code reported false positives."""
     if isinstance(expected, dict):
         return isinstance(actual, dict) and all(k in actual and contains(v, actual[k]) for k, v in expected.items())
     if isinstance(expected, list):
+        if not expected:
+            return actual == []
         return isinstance(actual, list) and all(any(contains(e, a) for a in actual) for e in expected)
     return expected == actual

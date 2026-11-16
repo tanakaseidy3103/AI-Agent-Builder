@@ -17,14 +17,15 @@
       }
     }},
     "expect": {"contains": {
-      "count": 9,
+      "count": 10,
       "warnings": ["GET /health: no operationId", "GET /health: no 2xx response declared"],
       "tests": [
         {"id": "createTodo:happy-path", "expect_status": "201", "request": {"body": {"title": "example", "done": true}}},
         {"id": "createTodo:missing-required-field", "expect_status": "400", "request": {"omitted": "title"}},
         {"id": "getTodo:unknown-id", "expect_status": "404", "request": {"path_params": {"todoId": "does-not-exist"}}},
         {"id": "listTodos:no-auth", "expect_status": "401"},
-        {"id": "get-health:happy-path", "expect_status": "2xx"}
+        {"id": "get-health:happy-path", "expect_status": "2xx"},
+        {"id": "get-health:no-auth", "expect_status": "2xx"}
       ]
     }}
   },

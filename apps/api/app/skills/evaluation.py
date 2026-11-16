@@ -42,7 +42,8 @@ def judge_case(case: dict, rec: dict, output_schema: dict) -> dict:
 
 
 # First failing static check prefix -> category. Order matters: earliest pipeline problem wins.
-STATIC_CATEGORIES = [("python.syntax", "syntax"), ("python.policy", "policy"), ("python.api", "hallucinated_api"),
+STATIC_CATEGORIES = [("python.syntax", "syntax"), ("python.policy", "policy"), ("code.inputs_from_data", "policy"),
+                     ("python.api", "hallucinated_api"),
                      ("skill_md.safety", "unsafe_instructions"), ("package.secrets", "secrets"), ("code.entrypoint", "entrypoint"), ("code.tests", "test_definition"), ("code.evals", "spec_error"),
                      ("manifest.", "spec_error"), ("skill_md.", "spec_error"), ("structure.", "spec_error")]
 
@@ -93,6 +94,8 @@ def full_validation(files: dict[str, str], model: str | None = None, on_static=N
             e = sandbox.run_evals(files, ex.entrypoint, load_cases(files), ex.timeout_seconds, ex.memory_mb)
             report["sandbox"] = {"status": "ran" if (t.ok and e.ok) else "error",
                                  "error": t.error or e.error or e.data.get("load_error"),
+                                 # what kind of failure (timeout / memory / no_result / malformed_result / load_error)
+                                 "kind": t.kind or e.kind or ("load_error" if e.data.get("load_error") else None),
                                  "duration_ms": t.duration_ms + e.duration_ms,
                                  "limits": {"network": "none", "memory_mb": ex.memory_mb, "timeout_s": ex.timeout_seconds}}
             cases = load_cases(files)
@@ -100,7 +103,7 @@ def full_validation(files: dict[str, str], model: str | None = None, on_static=N
             report["evals"] = [judge_case(c, recs.get(c["name"], {"error": e.data.get("load_error") or e.error or "not run"}),
                                           manifest.output_schema) for c in cases]
         except sandbox.SandboxUnavailable as err:
-            report["sandbox"] = {"status": "unavailable", "error": str(err)}
+            report["sandbox"] = {"status": "unavailable", "error": str(err), "kind": "infrastructure"}
 
         tests, evals = report["tests"], report["evals"]
         tests_ok = len(tests) >= MIN_TESTS and all(x["status"] == "pass" for x in tests)

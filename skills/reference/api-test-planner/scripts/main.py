@@ -64,4 +64,9 @@ def run(data: dict) -> dict:
             if secured:
                 tests.append({**base, "id": f"{op_id}:no-auth", "case": "no-auth", "expect_status": "401",
                               "request": {"headers": {"Authorization": None}}})
+            else:
+                # public operation: a request without credentials must succeed with the operation's own 2xx status
+                # (the external 2026-11-14 addition hard-coded "200", wrong for e.g. a DELETE that answers 204)
+                tests.append({**base, "id": f"{op_id}:no-auth", "case": "no-auth", "expect_status": ok[0] if ok else "2xx",
+                              "request": {"headers": {"Authorization": None}}})
     return {"tests": tests, "count": len(tests), "warnings": warnings}
