@@ -1,10 +1,13 @@
 node_modules/
 dist/
+dist-demo/
+dist-homelab/
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 .env
+.env.demo
 *.local
 coverage/
 test-results/
@@ -17,6 +20,13 @@ unity/**/[Bb]uild/
 unity/**/[Ll]ogs/
 unity/**/[Uu]ser[Ss]ettings/
 data/
+data-demo/
 .playwright-mcp/
 apps/web/test-results/
 apps/web/playwright-report/
+# Local-only material: machine-specific compose override, private audit notes and raw audit captures
+docker-compose.override.yml
+audits/
+docs/evidence/screenshots/ux/
+docs/evidence/screenshots/audit/
+__pycache__/
