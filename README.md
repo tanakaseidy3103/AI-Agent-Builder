@@ -322,7 +322,7 @@ curl -X POST http://localhost:8000/v1/skills/python-code-analyzer/run \
 
 ## Studio API endpoints
 
-All Studio routes answer loopback clients only (no user accounts yet).
+All Studio routes answer loopback clients only while `STUDIO_LOCAL_ONLY=true`, the default (no user accounts yet).
 
 | Route | Purpose |
 |---|---|
