@@ -1,438 +1,306 @@
 # AI Agent Builder
 
-> **Create once. Reuse anywhere.**
+AI Agent Builder turns a plain-language request into an **Agent Skill**: a small package (`SKILL.md`, a Python script,
+unit tests and evaluation cases) that AI coding tools such as Claude Code, Codex and Cursor can install and use. The
+Skill is written by a local model through Ollama, checked statically, executed in an isolated Docker sandbox, repaired
+from its real failures, and given a status that is decided by the checks, never by the model.
 
-Describe an AI agent in plain language. AI Agent Builder generates a reusable, tested Skill package — with its own code, tests, and evaluation cases — that installs into Claude Code, Codex, or Cursor with one command.
+![Overview](docs/screenshots/overview.png)
 
-就職作品 — HAL名古屋 · 日本語の手順: [docs/ja/QUICKSTART.md](docs/ja/QUICKSTART.md)
+## Contents
 
-![Agent Studio — desktop view (English)](docs/evidence/screenshots/final-studio-start.png)
+[Vision](#vision) · [Problem](#the-problem) · [Features](#key-features) · [How generation works](#how-skill-generation-works) ·
+[Static validation](#static-validation) · [Sandbox](#docker-sandbox) · [Repair](#automatic-repair) · [Statuses](#statuses) ·
+[Limits of verification](#what-verified-does-and-does-not-mean) · [Screenshots](#screenshots) · [Architecture](#architecture) ·
+[Stack](#technology-stack) · [Prerequisites](#prerequisites) · [Installation](#installation) · [Configuration](#environment-configuration) ·
+[Backend](#start-the-backend) · [Frontend](#start-the-frontend) · [Tests](#run-the-tests) · [Generate and export](#generate-and-export-a-skill) ·
+[Demo Mode](#demo-mode) · [Limitations and roadmap](#limitations-and-roadmap) · [Repository](#repository-structure) · [License](#contributing-and-license)
 
----
+## Vision
 
-## What problem does this solve?
+Generated code should come with evidence. A Skill that an AI tool will run on your project should say what was
+checked, what passed, what failed and what was never tested, so that a person can decide whether to trust it.
 
-When you use multiple AI coding assistants (Claude Code, Codex, Cursor), you re-describe the same capability in each one. There is no standard way to package an agent capability once and reuse it everywhere.
+## The problem
 
-AI Agent Builder generates **Skills** — self-contained packages with a clear interface, real tests, and an evaluation suite. A Skill you generate once exports to any supported coding agent. If it fails, the platform tells you exactly why, and tries to repair it automatically.
+Asking a language model for "a tool that finds X in my code" gives code that looks right. Whether it runs, handles
+empty input, or matches its own description is usually discovered later, on the user's machine. AI Agent Builder
+moves that discovery into the build: the Skill is executed against tests and evaluation cases in a sandbox before it
+is offered for export.
 
----
+## Key features
 
-## Who should use this?
+- Natural-language request to a complete Skill package, with a local model (no API key, no cloud).
+- Static validation of every package: structure, manifest, schemas, unsafe instructions, secrets, Python policy.
+- Execution of unit tests and evaluation cases in a locked-down Docker container.
+- A bounded repair loop fed with the real failures (static checks, tracebacks, failing cases).
+- An objective status (`validation_failed`, `validated`, `verified`) and a full report per version.
+- Studio UI: live pipeline view, code workspace, a **Skill Flow** diagram built from the real files, evaluations
+  per version, export with install commands for Claude Code, Codex and Cursor. English and Japanese.
+- Public **Demo Mode**: anonymous, isolated visitor sessions with limits, served from the author's machine.
 
-- **Developers** who want to standardize repeated agent capabilities across tools
-- **Teams** building internal tooling with AI coding agents
-- **Anyone learning** how reliable AI code generation and verification actually work
+## How Skill generation works
 
----
+```mermaid
+flowchart LR
+  R[Request] --> S[Specification<br/>schemas, rules, error cases]
+  S --> C[Eval cases<br/>from the spec only]
+  C --> G[Code<br/>scripts/main.py]
+  G --> T[Unit tests<br/>from the spec only]
+  T --> V[Static validation]
+  V -->|pass| X[Sandbox: tests + eval cases]
+  V -->|fail| F[Repair]
+  X -->|all pass| OK[verified]
+  X -->|failures| F
+  F --> V
+  X -->|budget spent or no progress| VAL[validated]
+  V -->|unrepairable| VF[validation_failed]
+```
 
-## What makes it different?
+1. **Specification.** The model returns name, description, kind, instructions, `rules`, `error_cases` and JSON
+   schemas for input and output. The input must carry the data itself (`{"files": {path: text}}` or a document
+   string), never file paths.
+2. **Evaluation cases** are written from the specification only, constrained by the real `input_schema`. When there
+   are more than two, the last one is a **holdout**: the code model never sees it.
+3. **Code** is written from the specification and the visible example inputs.
+4. **Unit tests** are written from the specification, without seeing the code, so they cannot simply copy its bugs.
+5. Static validation, sandbox execution and evaluation decide the status; the repair loop runs in between.
 
-| Other tools | AI Agent Builder |
+Every stage is persisted and shown live in the Studio. Details: [docs/skills.md](docs/skills.md).
+
+## Static validation
+
+Deterministic checks, no code executed (`apps/api/app/skills/validation.py`):
+
+| Area | Checks |
 |---|---|
-| "The AI generated this" — no verification | Deterministic AST checks + sandbox execution before any claim of quality |
-| Black-box generation | 10 persisted pipeline stages; you see every step |
-| Agent definition locked to one tool | ZIP export + install commands for Claude Code, Codex, Cursor |
-| Vague quality signals | `validated` = every static check passed; `verified` = all unit tests + eval cases passed in Docker |
-| Repair is manual | Bounded repair loop feeds the exact failure (input, expected, actual) back to the model |
+| Structure | safe relative paths, size limits, `SKILL.md` and `manifest.json` present |
+| Manifest | schema, slug, semantic version, permissions, compatibility, no external dependencies |
+| Instructions | no destructive commands, piped downloads, privilege escalation or prompt-injection text in Markdown |
+| Secrets | provider key formats and hard-coded credentials |
+| Python | syntax, allowed imports (standard library only), forbidden calls (`eval`, `exec`, `subprocess`, `os.system`, writes…), hallucinated standard-library attributes |
+| Code Skills | `run(data)` entrypoint; reads input only from `data`; ≥ 3 tests that call `run()` with real assertions; test inputs that match `input_schema`; ≥ 2 eval cases with non-empty expectations |
 
-**Honest limitation:** with 7-billion-parameter local models (qwen2.5-coder, llama3.2:3b), the platform generates structurally valid Skills (`validated`) but does not yet produce `verified` ones consistently (0/42 in Benchmark C). The 5 human-written reference Skills pass the same checks. See [docs/benchmarks/PHASE1_ANALYSIS.md](docs/benchmarks/PHASE1_ANALYSIS.md).
+Static validation is defence in depth and fast feedback. It is **not** the security boundary; the sandbox is.
 
----
+## Docker sandbox
 
-## Main features
+Every execution of generated code is a fresh container (`apps/api/app/skills/sandbox.py`):
 
-- **10-stage generation pipeline** — analyze → specify → plan → generate → validate → test generation → sandbox tests → evaluate → report → package; every stage is persisted so a restart doesn't lose progress
-- **Bounded repair loop** — feeds real failure details (traceback, expected vs actual) back to the model; stops when no progress is detected, never loops forever
-- **Docker sandbox** — generated code runs with no network, read-only filesystem, unprivileged user, CPU/memory/PID limits, and a wall-clock timeout; the host process never executes generated code directly
-- **Deterministic validation** — 20 AST-based checks (forbidden imports, hallucinated stdlib APIs, hardcoded secrets, unsafe instructions) with no LLM in the verdict
-- **Objective quality signals** — `validated` / `verified` are computed by the validator, never by the model itself; a hidden holdout eval case prevents the model from special-casing visible inputs
-- **Export to anything** — ZIP, Claude Code install command, Codex install command, Cursor install command; tested end-to-end for Claude Code and Codex
-- **Bilingual UI** — full English and Japanese (444 keys each, 100% parity)
-- **Public `/v1` API + Python SDK** — call any validated Skill from external applications
-
----
-
-## How the generation pipeline works
-
-```
-User prompt
-    │
-    ▼
-[1] analyze     Planner: LLM interprets the request → structured spec (JSON Schema constrained)
-[2] specify     Planner: build Manifest (id, version, kind, permissions, input/output schemas)
-[3] plan        Planner: enumerate all files to generate
-    │
-    ▼
-[4] generate_files  Developer: LLM writes scripts/main.py, generates eval cases from spec
-[5] test_generation Tester: LLM writes tests/test_main.py from the spec (not from the code)
-    │
-    ▼  ┌─────── repair loop (up to 3 rounds) ──────┐
-[6] static_validation  Reviewer: 20 deterministic AST checks  │
-[7] sandbox_tests      Tester: run unit tests in Docker        │
-[8] evaluate           Tester: run eval cases in Docker        │
-    │  if failures and progress: → back to [4] ───────────────┘
-    ▼
-[9] report      Reviewer: collect results, record repair history
-[10] package    Builder: write Skill to storage, store status
+```text
+docker run -i --rm --network none --read-only --tmpfs /tmp:size=32m
+  --memory 256m --memory-swap 256m --cpus 1 --pids-limit 64
+  --user 65534:65534 --cap-drop ALL --security-opt no-new-privileges
+  python:3.12-slim  timeout <N>  python -I ...
 ```
 
-The model never decides the status. Only the deterministic validator does.
+- No host mounts: the package is streamed in as a tar archive; the host environment is never forwarded.
+- Evaluation expectations and the holdout flag never enter the container; outputs are judged on the host.
+- Output is capped on the host; failures are classified (`timeout`, `memory`, `load_error`, `infrastructure`…).
+- If Docker is unavailable, nothing can become `verified`.
 
----
+Security model and known gaps: [docs/SECURITY.md](docs/SECURITY.md).
+
+## Automatic repair
+
+When a round fails, the model receives the failing checks with their how-to-fix hints, test tracebacks, and for each
+failing visible eval case its input, expected and actual output (the holdout stays hidden). Rules:
+
+- at most 3 repair rounds; stop early when two rounds fail identically or the failure cannot be fixed by code;
+- tests are frozen unless the test file itself is broken, so the model cannot weaken them to pass.
+
+## Statuses
+
+| Status | Meaning | Exportable |
+|---|---|---|
+| `validation_failed` | at least one static check failed | no |
+| `validated` | every static check passed; behaviour **not** proven (tests or eval cases failed, the sandbox was unavailable, or the Skill is instruction-only) | yes, with a warning |
+| `verified` | code Skill, validated, and in the sandbox: ≥ 3 unit tests all passed, and every eval case (holdout included) raised no error, matched `output_schema`, was deterministic over two runs and met its expectation | yes |
+
+## What `verified` does and does not mean
+
+`verified` means the Skill passed **the verification suite configured for it**: its own unit tests and evaluation
+cases, written by the same model from the specification. It does **not** guarantee correct behaviour for every input.
+
+Measured example (2026-11-14, `qwen2.5-coder` 7B on CPU, independent oracle with hand-written inputs): a CSV-header
+Skill was `verified` but wrong for quoted headers and header-only files, which its own tests did not cover; a TODO/FIXME
+Skill was `verified` and correct on every oracle case. After the prompts asked for format edge cases, two more CSV runs
+ended honestly `validated` because their tests caught the bugs. Evidence:
+[docs/evidence/E2E_REAL_OLLAMA_2026-11-14.md](docs/evidence/E2E_REAL_OLLAMA_2026-11-14.md). Read the code before you run
+an exported Skill.
+
+## Screenshots
+
+All screenshots are of the running application with real data: five human-written reference Skills and three Skills
+generated by `qwen2.5-coder` on a local machine (captured 2026-11-16).
+
+| | |
+|---|---|
+| **Agent Studio**: a real run, its stages and an honest `validated` outcome<br>![Agent Studio](docs/screenshots/agent-studio-real-run.png) | **Code Workspace**: files of a Skill<br>![Code Workspace](docs/screenshots/code-workspace.png) |
+| **Skill Flow**: structure derived from the files; scanned items are marked approximate<br>![Skill Flow](docs/screenshots/skill-flow.png) | **Validation report**: criteria and sandbox evidence<br>![Validation](docs/screenshots/validation-report.png) |
+| **Evaluations**: pass rate per version of generated Skills<br>![Evaluations](docs/screenshots/evaluations.png) | **Export**: ZIP contents and install commands<br>![Export](docs/screenshots/export.png) |
+| **My Agents**: examples are labelled<br>![My Agents](docs/screenshots/my-agents.png) | **Mobile**<br>![Mobile overview](docs/screenshots/mobile-overview.png) |
 
 ## Architecture
 
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI[React + TypeScript Studio]
+  end
+  subgraph Host[Your machine]
+    API[FastAPI<br/>pipeline, validation, export]
+    DB[(PostgreSQL)]
+    FS[(Skill packages<br/>STORAGE_DIR)]
+    OL[Ollama<br/>local model]
+    DK[[Docker sandbox<br/>one container per run]]
+  end
+  UI -- /api --> API
+  API --> DB
+  API --> FS
+  API --> OL
+  API -- docker run --> DK
 ```
-apps/web/          React + TypeScript + Vite + Tailwind + TanStack Query
-                   Agent Studio: Chat (38%) | Agent Office + Pipeline (62%)
-                   Bilingual (EN/JA), mobile-ready, light theme
 
-apps/api/          FastAPI + Python 3.12 + SQLAlchemy + Alembic + Postgres
-                   Pipeline, sandbox, validation, auth, export, audit log
+The Studio (`app.main`) is single-user and local-only. The public demo is a separate process (`app.demo.app`) with its
+own database and storage. Design notes: [docs/architecture.md](docs/architecture.md), [docs/adr/](docs/adr/).
 
-packages/contracts/  Shared JSON Schema contracts (TypeScript + Pydantic mirror)
-packages/sdk-python/ Python SDK for calling Skills via /v1 API (stdlib only, Python ≥ 3.8)
+## Technology stack
 
-skills/reference/  5 human-written benchmark Skills (all pass `verified`)
-                   python-code-analyzer · laravel-bug-analyzer · api-test-planner
-                   react-accessibility-analyzer · project-documentation-generator
-```
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, TanStack Query |
+| Backend | Python 3.12, FastAPI, SQLAlchemy, Alembic, Pydantic |
+| Database | PostgreSQL (SQLite in tests) |
+| Model | Ollama, default `qwen2.5-coder:latest` |
+| Sandbox | Docker, `python:3.12-slim` |
+| Tests | pytest, Vitest, Playwright |
 
-Security boundary: generated code runs **only** in Docker (`--network none`, `--read-only`, uid 65534, `--cap-drop ALL`, `--security-opt no-new-privileges`, 256 MB RAM, 1 CPU, 64 PID limit). See [docs/SECURITY.md](docs/SECURITY.md).
+## Prerequisites
 
----
+| Component | Version |
+|---|---|
+| Node.js / npm | 22+ / 10+ |
+| [uv](https://docs.astral.sh/uv/) | recent (installs Python 3.12 and the API dependencies) |
+| Docker | Docker Desktop or Engine; `docker pull python:3.12-slim` |
+| [Ollama](https://ollama.com) | 0.40+, with `ollama pull qwen2.5-coder` (about 4.7 GB) |
+| Hardware | 16 GB RAM recommended; a GPU makes generation much faster (CPU works, minutes per Skill) |
 
-## Technologies
-
-| Layer | Technology | Why |
-|---|---|---|
-| Frontend | React 19 + TypeScript + Vite | Type-safe, fast dev loop |
-| Styling | Tailwind CSS v4 (`@theme` tokens) | Single CSS cascade for all 16 color tokens; light/dark switch = 1 file |
-| State | TanStack Query | Server-state polling without a WebSocket; survives reconnects |
-| Backend | FastAPI + Python 3.12 | Async, type-annotated; `datetime.UTC` and new type hints require ≥3.12 |
-| Database | PostgreSQL + SQLAlchemy + Alembic | Relational history; reproducible migrations |
-| LLM | Ollama (local) | No API key required; swappable via `LLM_MODEL` env var |
-| Sandbox | Docker (`python:3.12-slim`) | Strongest isolation available without a VM |
-| Validation | stdlib `ast` | Deterministic, no network, no LLM bias |
-| Auth | SHA-256 hashed API keys | Never store plaintext; revocable per key |
-| i18n | Custom hook `useT()` | 444 EN = 444 JA keys; parity enforced by Vitest |
-
----
-
-## Requirements
-
-| Component | Version | Notes |
-|---|---|---|
-| Node.js | 22+ | For the frontend dev server and Vitest |
-| npm | 10+ | Included with Node.js 22 |
-| [uv](https://docs.astral.sh/uv/) | latest | Manages Python 3.12 and all API dependencies |
-| Docker Desktop | 29+ | Required for Postgres and the sandbox; `docker pull python:3.12-slim` |
-| [Ollama](https://ollama.com) | 0.40+ | Local LLM server |
-| GPU (recommended) | ≥6 GB VRAM | qwen2.5-coder:latest (7B); works on CPU but generation is much slower |
-| OS | Windows 11 / macOS / Linux | Tested on Windows 11 Pro |
-
----
-
-## Installation — Windows
-
-### 1. Clone the repository
+## Installation
 
 ```bash
 git clone https://github.com/tanakaseidy3103/AI-Agent-Builder.git
 cd AI-Agent-Builder
-```
-
-### 2. Install Node.js dependencies
-
-```bash
-npm install
-```
-
-### 3. Install backend dependencies
-
-```bash
-cd apps/api
-uv sync          # creates .venv with Python 3.12 and all packages
-cd ../..
-```
-
-### 4. Configure environment
-
-```bash
-cp .env.example apps/api/.env
-# Edit apps/api/.env if you need a non-default Postgres password or model
-```
-
-Default `apps/api/.env`:
-```
-DATABASE_URL=postgresql+psycopg://aab:change-me@127.0.0.1:5433/aab
-OLLAMA_BASE_URL=http://localhost:11434
-LLM_MODEL=qwen2.5-coder:latest
-STORAGE_DIR=data
-SANDBOX_IMAGE=python:3.12-slim
-RATE_LIMIT_PER_MINUTE=30
-```
-
-### 5. Start Postgres
-
-```bash
-docker compose up -d db        # starts Postgres on 127.0.0.1:5433
-```
-
-### 6. Run database migrations
-
-```bash
-cd apps/api
-.venv\Scripts\python.exe -m alembic upgrade head
-cd ../..
-```
-
-### 7. Pull the sandbox image
-
-```bash
+npm install                     # frontend workspace
+cd apps/api && uv sync && cd ../..
 docker pull python:3.12-slim
+ollama pull qwen2.5-coder
 ```
 
-### 8. Start Ollama and pull the model
+## Environment configuration
 
 ```bash
-ollama serve                            # keep this running in a terminal
-ollama pull qwen2.5-coder               # ~4 GB download
+cp .env.example apps/api/.env   # never commit it
 ```
 
-### 9. Start the backend
-
-```bash
-cd apps/api
-.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000
-# API is now on http://localhost:8000
-```
-
-The API must run on the **host** (not in a Docker container) so it can call the Docker CLI for the sandbox.
-
-### 10. Start the frontend
-
-In another terminal:
-
-```bash
-npm run dev:web
-# Studio opens at http://localhost:5173
-```
-
-### 11. (Optional) Seed reference Skills
-
-```bash
-curl -X POST http://localhost:8000/studio/reference/seed
-```
-
-This imports the 5 human-written reference Skills. They all pass `verified` and are useful as benchmarks and examples.
-
----
-
-## How to create an Agent
-
-1. Open http://localhost:5173 and go to **Studio**.
-2. Type a plain-language description in the prompt box. Example:
-   > "Create an agent that reads Python files, finds lines with TODO or FIXME comments, and reports file and line number."
-3. Click **Generate**. The Agent Office shows the pipeline progressing in real time.
-4. When generation completes, inspect the **Validation** tab for the status and any failures.
-5. The **Files** tab shows the generated source code.
-
-**Status meanings:**
-
-| Status | What it means |
-|---|---|
-| `validated` | All 20 static checks passed. No dangerous code, no hardcoded secrets, correct structure. |
-| `verified` | `validated` **and** ≥3 unit tests all passed **and** all eval cases passed in the Docker sandbox. |
-| `validation_failed` | At least one static check failed. The Validation tab shows what failed and how to fix it. |
-
----
-
-## How to test a generated Agent
-
-The **Validation** tab shows the sandbox test results. Each unit test and eval case is listed with pass/fail status.
-
-To run the tests yourself outside the platform (for a code Skill):
-
-```bash
-# From the extracted ZIP or the data/skills/<id>/ directory:
-cd <skill-directory>
-# Run unit tests (requires the scripts/ directory on the Python path):
-python -c "
-import sys; sys.path.insert(0, 'scripts')
-import importlib.util, unittest
-spec = importlib.util.spec_from_file_location('test_main', 'tests/test_main.py')
-mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromModule(mod))
-"
-```
-
----
-
-## How to export and use an Agent
-
-### Export from the Studio
-
-1. After a successful generation, click the **Export** tab.
-2. Click **Download ZIP** to get the full package.
-3. Click **Copy install command** next to your preferred coding agent.
-
-### Install in Claude Code
-
-```bash
-claude skill install ./my-skill.zip
-```
-
-Or use the generated command from the Export tab (includes the correct path).
-
-### Install in Codex
-
-```bash
-codex skill install ./my-skill.zip --root ~/.agents/skills
-```
-
-### Use from the Python SDK
-
-```python
-from agent_builder import SkillClient
-
-client = SkillClient(base_url="http://localhost:8000", api_key="aab_your_key_here")
-result = client.run("python-code-analyzer", {"files": {"main.py": open("main.py").read()}})
-print(result)
-```
-
-### Use from the `/v1` API
-
-Create an API key in Studio → Settings, then:
-
-```bash
-curl -X POST http://localhost:8000/v1/skills/python-code-analyzer/run \
-  -H "Authorization: Bearer aab_your_key_here" \
-  -H "Content-Type: application/json" \
-  -d '{"files": {"main.py": "import os\ndef run(): pass\n"}}'
-```
-
----
-
-## Supported integrations
-
-| Integration | Implementation | End-to-end tested | Evidence |
-|---|---|---|---|
-| ZIP export | ✅ | ✅ | `docs/evidence/e2e-claude-code-20261106-091520.json` |
-| Claude Code | ✅ | ✅ | `docs/evidence/e2e-claude-code-20261106-091520.json` |
-| Codex | ✅ | ✅ | `docs/evidence/e2e-codex-20261106-091557.json` |
-| Cursor | ✅ adapter | ⚠️ adapter only, not E2E tested | No E2E evidence exists |
-| Python SDK | ✅ | ✅ used in Codex E2E | `packages/sdk-python/` |
-| JavaScript SDK | ❌ | ❌ | Not implemented |
-
----
-
-## Running tests
-
-```bash
-# Backend (requires Docker running for real sandbox tests)
-cd apps/api
-.venv\Scripts\python.exe -m pytest -q        # 184 tests
-
-# Frontend unit tests + build
-cd apps/web
-npx vitest run                                # 30 tests
-npm run build                                 # TypeScript check + production build
-
-# Python SDK
-cd packages/sdk-python
-PYTHONPATH=. ../../apps/api/.venv/Scripts/python.exe -m pytest tests/ -q
-
-# Reference Skills (run their own tests independently)
-cd skills/reference/python-code-analyzer
-python -c "
-import sys; sys.path.insert(0, 'scripts')
-import importlib.util, unittest
-spec = importlib.util.spec_from_file_location('test_main', 'tests/test_main.py')
-mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromModule(mod))
-"
-```
-
-Full test documentation: [docs/TESTING.md](docs/TESTING.md)
-
----
-
-## Security model
-
-See [docs/SECURITY.md](docs/SECURITY.md) for the complete security model.
-
-**Key controls:**
-
-- Generated code runs **only** in Docker with no network, read-only filesystem, unprivileged user (uid 65534), all capabilities dropped, 256 MB RAM limit, 64 PID limit, and a wall-clock timeout.
-- The host process never executes generated code directly.
-- Result integrity: the sandbox runner writes one marked JSON line then immediately calls `os._exit()`, preventing any generated code from forging test results.
-- Path traversal prevention: all package paths go through `safe_relpath()` with an allowlist.
-- Secret detection: 6 provider-format patterns + generic assignment check on all generated files.
-- API keys stored as SHA-256 hashes, never plaintext.
-- Studio accessible from localhost only (loopback + Host header check prevents DNS-rebinding).
-
----
-
-## Known limitations
-
-See [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) for the full list.
-
-**Key limitations:**
-
-- **0/42 generated code Skills reach `verified`** with the local 7B models tested. The validator is correctly calibrated (the 5 reference Skills pass); the models' code quality is insufficient. A larger model (14B+) would likely improve this. (Benchmark C, 2026-11-06)
-- **Pipeline roles are not autonomous agents.** The Agent Office shows five real pipeline stages. "Researcher" and "Security reviewer" are shown as planned but do not exist.
-- **Single-user, local-only.** No accounts, no tenant isolation. The Studio is protected by a loopback check only. Required before any shared deployment.
-- **Background generation is in-process.** Restarting the API abandons running jobs.
-- **Sandbox requires Docker on the host.** The API container cannot run the sandbox.
-
----
-
-## Screenshots
-
-| View | Screenshot |
-|---|---|
-| Studio (desktop, English) | [final-studio-start.png](docs/evidence/screenshots/final-studio-start.png) |
-| Studio (desktop, validated result) | [final-studio-run-validated.png](docs/evidence/screenshots/final-studio-run-validated.png) |
-| Studio (mobile, Japanese) | [final-mobile-ja-studio.png](docs/evidence/screenshots/final-mobile-ja-studio.png) |
-| Agent Office live | [office-live.png](docs/evidence/screenshots/office-live.png) |
-| Overview page (desktop) | [final-overview.png](docs/evidence/screenshots/final-overview.png) |
-| Evaluations page | [final-evaluations.png](docs/evidence/screenshots/final-evaluations.png) |
-
-Demo plan and 90-second walkthrough script: [docs/DEMO_PLAN.md](docs/DEMO_PLAN.md)
-
----
-
-## Roadmap
-
-See [docs/FINAL_PRODUCT_ROADMAP.md](docs/FINAL_PRODUCT_ROADMAP.md) for the full roadmap.
-
-**Planned for Phase 2:**
-- Try a 14B+ local code model (qwen2.5-coder:14b, requires ≥12 GB VRAM) to improve the verified rate
-- Spec-first test generation (write tests from the spec before writing code)
-- Smaller, single-rule tasks to increase the probability of verified output
-- User accounts and tenant isolation (required before any shared deployment)
-- GitHub integration and hosted deployment option
-- JavaScript SDK
-
----
-
-## Documentation
-
-| Document | Language | Content |
+| Variable | Default | Purpose |
 |---|---|---|
-| [docs/skills.md](docs/skills.md) | English | Package format, pipeline, statuses, export, API, SDK |
-| [docs/SECURITY.md](docs/SECURITY.md) | English | Security boundaries, known gaps, dependency audit |
-| [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) | English | Honest list of what does not work |
-| [docs/TESTING.md](docs/TESTING.md) | English | Test commands and results |
-| [docs/benchmarks/](docs/benchmarks/) | English | Reproducible AI quality benchmarks |
-| [docs/DEMO_PLAN.md](docs/DEMO_PLAN.md) | English | 90-second demo script for HAL Nagoya |
-| [docs/evidence/HAL_NAGOYA_READINESS_REPORT.md](docs/evidence/HAL_NAGOYA_READINESS_REPORT.md) | English | Full production audit report |
-| [docs/adr/](docs/adr/) | English | Architecture decision records |
-| [docs/ja/QUICKSTART.md](docs/ja/QUICKSTART.md) | 日本語 | クイックスタート |
-| [docs/ja/ENTERPRISE_READINESS.md](docs/ja/ENTERPRISE_READINESS.md) | 日本語 | 企業導入準備状況 |
+| `DATABASE_URL` | `postgresql+psycopg://aab:change-me@127.0.0.1:5433/aab` | Studio database |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | model server |
+| `OLLAMA_API_KEY` | empty | only for a remote model server behind an authenticating proxy |
+| `LLM_MODEL` | `qwen2.5-coder:latest` | model used for generation |
+| `STORAGE_DIR` | `data` | where Skill packages are stored |
+| `SANDBOX_IMAGE` | `python:3.12-slim` | sandbox image |
 
----
+Demo Mode uses `DEMO_*` variables in `apps/api/.env.demo` ([template](apps/api/.env.demo.example)).
 
-*AI Agent Builder is a graduation portfolio project (就職作品) for HAL Nagoya. All benchmark results are real and reproducible. No results have been fabricated.*
+## Start the backend
+
+```bash
+docker compose up -d db                              # PostgreSQL on 127.0.0.1:5433
+cd apps/api
+.venv/Scripts/python.exe -m alembic upgrade head     # macOS/Linux: .venv/bin/python
+.venv/Scripts/python.exe -m uvicorn app.main:app --port 8000
+```
+
+Run the API on the host, not in a container: it starts sandbox containers with the host's `docker` CLI.
+Health: `GET /health` (liveness) and `GET /health/ready` (database, sandbox, model).
+Optional: `curl -X POST http://localhost:8000/studio/reference/seed` imports the five reference Skills.
+
+## Start the frontend
+
+```bash
+npm run dev:web                 # http://localhost:5173 (proxies /api to port 8000)
+```
+
+## Run the tests
+
+```bash
+cd apps/api && .venv/Scripts/python.exe -m pytest -q          # backend; Docker tests are skipped without Docker
+cd apps/web && npx vitest run && npm run build               # frontend unit tests, type check, production build
+cd apps/web && npx playwright test                            # browser tests, desktop + mobile (mocked LLM API)
+cd apps/web && npm run e2e:demo                               # public Demo Mode build
+cd packages/sdk-python && PYTHONPATH=. python -m pytest tests -q   # Python SDK
+cd apps/api && .venv/Scripts/python.exe -u scripts/e2e_real_ollama.py   # real model + sandbox + independent oracle
+```
+
+Latest results and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
+
+## Generate and export a Skill
+
+1. Open **Agent Studio**, describe the Skill (or pick an example), and choose **Create agent**.
+2. Follow the stages; the run takes a few minutes with a local model.
+3. Open the result: **Files**, **Flow**, **Tests**, **Validation** and **Repairs** show the evidence.
+4. **Export** downloads a ZIP and shows install commands that refuse to overwrite an existing copy, for example into
+   `~/.claude/skills/` (Claude Code) or `~/.agents/skills/` (Codex). Restart the tool afterwards.
+
+Generated Skills can also be called through the local `/v1` API with an API key, or the Python SDK in
+`packages/sdk-python`.
+
+## Demo Mode
+
+A visitor-safe backend (`app.demo.app`) for showing the product publicly from the author's machine:
+
+- anonymous sessions; each visitor sees only their own jobs plus read-only examples;
+- limits on prompt size, generations per session, sessions per IP, queue length and job time; one generation at a time;
+- an optional access code for presentations; no admin, install or `/v1` routes in that process;
+- one process can serve the built site and its API on one origin, published through a Cloudflare Quick Tunnel.
+
+Details: [docs/DEMO.md](docs/DEMO.md), deployment options: [docs/DEPLOY.md](docs/DEPLOY.md), Windows scripts:
+[deploy/homelab/](deploy/homelab/).
+
+## Limitations and roadmap
+
+- Generated code quality depends on the local model. With 7B models on CPU, `verified` is rare (0/42 in benchmark C,
+  2026-11-06) and can be wrong for untested inputs (see above). Generation takes minutes.
+- The Studio has no user accounts or multi-tenant isolation; only Demo Mode may be exposed.
+- Generation jobs run inside the API process; a restart interrupts them.
+- Cursor support is an adapter without end-to-end evidence.
+
+Full list: [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Roadmap: [docs/FINAL_PRODUCT_ROADMAP.md](docs/FINAL_PRODUCT_ROADMAP.md).
+
+## UGREEN Hackathon 2026
+
+[hackathons/ugreen-2026/](hackathons/ugreen-2026/) contains **NAS Project Memory**, a Skill written during the
+UGREEN Hackathon 2026 on AI NAS in UGREEN's own Skill format (Markdown that delegates to NAS experts). It is
+independent from the code in this repository; applying AI Agent Builder's verification approach to UGREEN Skills is
+future work.
+
+## Repository structure
+
+```text
+apps/api/            FastAPI backend: pipeline, validation, sandbox, Studio and Demo APIs, tests
+apps/web/            React Studio, Vitest unit tests, Playwright end-to-end tests
+packages/contracts/  shared JSON Schema contracts
+packages/sdk-python/ Python SDK for the /v1 API
+skills/reference/    five human-written reference Skills used as benchmarks and examples
+deploy/              deployment templates and Windows homelab scripts
+docs/                architecture, Skill format, security, testing, deployment, benchmarks, evidence
+docs/screenshots/    current application screenshots used in this README
+hackathons/          UGREEN Hackathon 2026 Skill and submission material
+```
+
+## Contributing and license
+
+Issues and pull requests are welcome; please run the tests above before opening one. This repository does not yet
+have a licence file, so all rights are reserved by the author until one is added.

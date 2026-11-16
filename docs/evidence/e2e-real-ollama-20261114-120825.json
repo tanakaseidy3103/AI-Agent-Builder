@@ -1,0 +1,504 @@
+{
+ "stamp": "20261114-120825",
+ "model": "qwen2.5-coder:latest",
+ "ollama": "http://localhost:11434",
+ "sandbox_image": "python:3.12-slim",
+ "rows": [
+  {
+   "scenario": "csv",
+   "attempt": 1,
+   "model": "qwen2.5-coder:latest",
+   "seconds": 230.4,
+   "job_status": "completed",
+   "job_error": null,
+   "stages": [
+    {
+     "name": "analyze",
+     "status": "passed",
+     "detail": "kind=code name='Validate CSV Header'",
+     "duration_ms": 64639
+    },
+    {
+     "name": "specify",
+     "status": "passed",
+     "detail": "validate-csv-header@0.1.0; kind=code; permissions=['compute']",
+     "duration_ms": 16
+    },
+    {
+     "name": "plan",
+     "status": "passed",
+     "detail": "SKILL.md, manifest.json, README.md, scripts/main.py, scripts/cli.py, docs/usage.md, tests/test_main.py, evals/cases.json",
+     "duration_ms": 16
+    },
+    {
+     "name": "generate_files",
+     "status": "passed",
+     "detail": "7 files; 3 eval cases",
+     "duration_ms": 83530
+    },
+    {
+     "name": "static_validation",
+     "status": "passed",
+     "detail": "round 1/4: 24 passed, 0 failed",
+     "duration_ms": 16
+    },
+    {
+     "name": "test_generation",
+     "status": "passed",
+     "detail": "tests/test_main.py",
+     "duration_ms": 80500
+    },
+    {
+     "name": "sandbox_tests",
+     "status": "passed",
+     "detail": "round 1/4: 4/4 tests passed",
+     "duration_ms": 1563
+    },
+    {
+     "name": "evaluate",
+     "status": "passed",
+     "detail": "round 1/4: 3/3 eval cases passed",
+     "duration_ms": 15
+    },
+    {
+     "name": "report",
+     "status": "passed",
+     "detail": "status=verified; static=pass, unit_tests=pass, eval_cases=pass; repair rounds=0",
+     "duration_ms": 15
+    },
+    {
+     "name": "package",
+     "status": "passed",
+     "detail": "validate-csv-header@0.1.0 stored (8 files), status verified",
+     "duration_ms": 30
+    }
+   ],
+   "skill": "validate-csv-header@0.1.0",
+   "status": "verified",
+   "tests": "4/4",
+   "evals": "3/3",
+   "sandbox": {
+    "status": "ran",
+    "error": null,
+    "kind": null,
+    "duration_ms": 1562,
+    "limits": {
+     "network": "none",
+     "memory_mb": 256,
+     "timeout_s": 10
+    }
+   },
+   "failure_category": "none",
+   "repair_rounds": 0,
+   "tests_rewritten_in_repair": 0,
+   "repair_history": [
+    {
+     "round": 1,
+     "status": "verified",
+     "tests": "4/4",
+     "evals": "3/3",
+     "failing": [],
+     "signature": "e3b0c44298fc"
+    }
+   ],
+   "failing_static": [],
+   "failing_tests": [],
+   "failing_evals": [],
+   "llm": {
+    "calls": 4,
+    "prompt_tokens": 2713,
+    "output_tokens": 1255,
+    "model_seconds": 220.38,
+    "load_seconds": 3.63,
+    "tokens_per_second": 7.1
+   },
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "csv": {
+      "type": "string"
+     },
+     "required_headers": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "minItems": 1
+     }
+    },
+    "required": [
+     "csv",
+     "required_headers"
+    ]
+   },
+   "output_schema": {
+    "type": "object",
+    "properties": {
+     "missing_headers": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "found_headers": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "is_valid": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "missing_headers",
+     "found_headers",
+     "is_valid"
+    ]
+   },
+   "files": {
+    "docs/usage.md": "# Usage\n\nCall run(data) with input matching manifest.json input_schema.\n\n## Input schema\n\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"csv\": {\n      \"type\": \"string\"\n    },\n    \"required_headers\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"minItems\": 1\n    }\n  },\n  \"required\": [\n    \"csv\",\n    \"required_headers\"\n  ]\n}\n```\n",
+    "evals/cases.json": "[\n  {\n    \"name\": \"Valid CSV with all required headers\",\n    \"input\": {\n      \"csv\": \"name,age,city\\nJohn,30,New York\",\n      \"required_headers\": [\n        \"name\",\n        \"age\",\n        \"city\"\n      ]\n    },\n    \"expect\": {\n      \"contains\": {\n        \"missing_headers\": [],\n        \"found_headers\": [\n          \"name\",\n          \"age\",\n          \"city\"\n        ],\n        \"is_valid\": true\n      }\n    }\n  },\n  {\n    \"name\": \"Valid CSV with some required headers missing\",\n    \"input\": {\n      \"csv\": \"name,city\\nJohn,New York\",\n      \"required_headers\": [\n        \"name\",\n        \"age\",\n        \"city\"\n      ]\n    },\n    \"expect\": {\n      \"contains\": {\n        \"missing_headers\": [\n          \"age\"\n        ],\n        \"found_headers\": [\n          \"name\",\n          \"city\"\n        ],\n        \"is_valid\": false\n      }\n    }\n  },\n  {\n    \"name\": \"Empty CSV input\",\n    \"input\": {\n      \"csv\": \"\",\n      \"required_headers\": [\n        \"name\",\n        \"age\",\n        \"city\"\n      ]\n    },\n    \"expect\": {\n      \"contains\": {\n        \"missing_headers\": [\n          \"name\",\n          \"age\",\n          \"city\"\n        ],\n        \"found_headers\": [],\n        \"is_valid\": false\n      }\n    },\n    \"holdout\": true\n  }\n]\n",
+    "manifest.json": "{\n  \"format_version\": \"1\",\n  \"id\": \"validate-csv-header\",\n  \"name\": \"Validate CSV Header\",\n  \"description\": \"Validates if the CSV header row contains all required headers.\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"code\",\n  \"tools\": [],\n  \"dependencies\": [],\n  \"permissions\": [\n    \"compute\"\n  ],\n  \"input_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"csv\": {\n        \"type\": \"string\"\n      },\n      \"required_headers\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"string\"\n        },\n        \"minItems\": 1\n      }\n    },\n    \"required\": [\n      \"csv\",\n      \"required_headers\"\n    ]\n  },\n  \"output_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"missing_headers\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"string\"\n        }\n      },\n      \"found_headers\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"string\"\n        }\n      },\n      \"is_valid\": {\n        \"type\": \"boolean\"\n      }\n    },\n    \"required\": [\n      \"missing_headers\",\n      \"found_headers\",\n      \"is_valid\"\n    ]\n  },\n  \"execution\": {\n    \"runtime\": \"python3.12\",\n    \"entrypoint\": \"scripts/main.py\",\n    \"timeout_seconds\": 10,\n    \"memory_mb\": 256\n  },\n  \"tests\": {\n    \"framework\": \"unittest\",\n    \"path\": \"tests\"\n  },\n  \"compatibility\": [\n    \"claude-code\",\n    \"codex\",\n    \"cursor\"\n  ],\n  \"origin\": \"generated\"\n}\n",
+    "README.md": "# Validate CSV Header\n\nValidates if the CSV header row contains all required headers.\n\nVersion 0.1.0 · kind `code` · origin `generated` · generated by AI Agent Builder.\nCheck the Studio's validation report for its status (validated / verified) before relying on it.\n\n## Install\n\nCopy this folder into your agent's skills directory, for example `~/.claude/skills/` (Claude Code) or `~/.agents/skills/` (Codex). The agent reads `SKILL.md`.\n\n## Run it yourself\n\nPython 3.12, standard library only, no network:\n\n```bash\npython scripts/cli.py input.json      # prints the JSON result\n```\n\nExample `input.json`:\n\n```json\n{\n  \"csv\": \"name,age,city\\nJohn,30,New York\",\n  \"required_headers\": [\n    \"name\",\n    \"age\",\n    \"city\"\n  ]\n}\n```\n\nInput and output contracts: `manifest.json` (`input_schema`, `output_schema`). Tests: `python -m unittest` from `tests/` with `scripts/` on the path.\n",
+    "scripts/cli.py": "\"\"\"Local runner: python scripts/cli.py [input.json] | --dir PATH\nReads JSON input (file or stdin), or builds {\"files\": {...}} from a directory, calls run(), prints JSON.\"\"\"\nimport json\nimport os\nimport sys\n\nsys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\nfrom main import run  # noqa: E402\n\nTEXT_EXT = {\".js\", \".jsx\", \".ts\", \".tsx\", \".py\", \".json\", \".md\", \".css\", \".html\", \".txt\", \".csv\"}\nSKIP_DIRS = {\"node_modules\", \".git\", \"dist\", \"build\", \".next\", \"__pycache__\", \".venv\"}\n\n\ndef collect(root):\n    files = {}\n    for d, dirs, names in os.walk(root):\n        dirs[:] = [x for x in dirs if x not in SKIP_DIRS]\n        for n in names:\n            p = os.path.join(d, n)\n            if os.path.splitext(n)[1] in TEXT_EXT and os.path.getsize(p) <= 200_000 and len(files) < 500:\n                with open(p, encoding=\"utf-8\", errors=\"replace\") as f:\n                    files[os.path.relpath(p, root).replace(os.sep, \"/\")] = f.read()\n    return {\"files\": files}\n\n\ndef main(argv):\n    if len(argv) >= 2 and argv[0] == \"--dir\":\n        data = collect(argv[1])\n    elif argv:\n        with open(argv[0], encoding=\"utf-8\") as f:\n            data = json.load(f)\n    else:\n        data = json.load(sys.stdin)\n    print(json.dumps(run(data), indent=2, ensure_ascii=False))\n\n\nif __name__ == \"__main__\":\n    main(sys.argv[1:])\n",
+    "scripts/main.py": "import re\n\ndef run(data: dict) -> dict:\n    csv = data.get(\"csv\")\n    required_headers = data.get(\"required_headers\", [])\n    \n    if not csv:\n        return {\n            \"missing_headers\": required_headers,\n            \"found_headers\": [],\n            \"is_valid\": False\n        }\n    \n    lines = csv.splitlines()\n    if len(lines) < 2:\n        return {\n            \"missing_headers\": required_headers,\n            \"found_headers\": [],\n            \"is_valid\": False\n        }\n    \n    header = lines[0].strip()\n    found_headers = header.split(',')\n    missing_headers = [header for header in required_headers if header not in found_headers]\n    \n    is_valid = len(missing_headers) == 0\n    \n    return {\n        \"missing_headers\": missing_headers,\n        \"found_headers\": found_headers,\n        \"is_valid\": is_valid\n    }\n",
+    "SKILL.md": "---\nname: validate-csv-header\ndescription: \"Validates if the CSV header row contains all required headers.\"\n---\n\n# Validate CSV Header\n\n1. Parse the input CSV text to extract the header row.\n2. Check if all required headers are present in the header row.\n3. Return a structured report with missing headers, found headers, and validation status.\n\n## Rules\n\n- The output must include a list of missing headers.\n- The output must include a list of found headers.\n- The output must include a boolean indicating if the file is valid (true if no required headers are missing, false otherwise).\n\n## When the input is empty or invalid\n\n- If the input CSV text is empty, return an empty list for missing headers, an empty list for found headers, and false for is_valid.\n- If the input CSV text does not have a header row, return an empty list for missing headers, an empty list for found headers, and false for is_valid.\n\n## How to run\n\nThis Skill ships a deterministic Python script (stdlib only). From this Skill's directory:\n\n```bash\npython scripts/cli.py input.json               # or pass JSON matching the input schema\n```\n\nRead the JSON output and explain the results to the user. Do not modify files unless asked.\n",
+    "tests/test_main.py": "import unittest\nfrom main import run\n\nclass TestValidateCSVHeader(unittest.TestCase):\n    def test_valid_csv(self):\n        input_data = {\n            \"csv\": \"name,age,city\\nJohn,30,New York\",\n            \"required_headers\": [\"name\", \"age\", \"city\"]\n        }\n        expected_output = {\n            \"missing_headers\": [],\n            \"found_headers\": [\"name\", \"age\", \"city\"],\n            \"is_valid\": True\n        }\n        self.assertEqual(run(input_data), expected_output)\n\n    def test_missing_required_header(self):\n        input_data = {\n            \"csv\": \"name,city\\nJohn,New York\",\n            \"required_headers\": [\"name\", \"age\", \"city\"]\n        }\n        expected_output = {\n            \"missing_headers\": [\"age\"],\n            \"found_headers\": [\"name\", \"city\"],\n            \"is_valid\": False\n        }\n        self.assertEqual(run(input_data), expected_output)\n\n    def test_empty_csv(self):\n        input_data = {\n            \"csv\": \"\",\n            \"required_headers\": [\"name\", \"age\", \"city\"]\n        }\n        expected_output = {\n            \"missing_headers\": [\"name\", \"age\", \"city\"],\n            \"found_headers\": [],\n            \"is_valid\": False\n        }\n        self.assertEqual(run(input_data), expected_output)\n\n    def test_no_header_row(self):\n        input_data = {\n            \"csv\": \"John,30,New York\",\n            \"required_headers\": [\"name\", \"age\", \"city\"]\n        }\n        expected_output = {\n            \"missing_headers\": [\"name\", \"age\", \"city\"],\n            \"found_headers\": [],\n            \"is_valid\": False\n        }\n        self.assertEqual(run(input_data), expected_output)\n\nif __name__ == '__main__':\n    unittest.main()\n"
+   },
+   "oracle": {
+    "status": "fail",
+    "passed": 4,
+    "judged": 5,
+    "cases": [
+     {
+      "case": "all present",
+      "passed": true,
+      "detail": "missing_headers=[] expected []",
+      "output": {
+       "missing_headers": [],
+       "found_headers": [
+        "id",
+        "name",
+        "email",
+        "age"
+       ],
+       "is_valid": true
+      }
+     },
+     {
+      "case": "one missing",
+      "passed": true,
+      "detail": "missing_headers=['email'] expected ['email']",
+      "output": {
+       "missing_headers": [
+        "email"
+       ],
+       "found_headers": [
+        "id",
+        "name",
+        "age"
+       ],
+       "is_valid": false
+      }
+     },
+     {
+      "case": "all missing",
+      "passed": true,
+      "detail": "missing_headers=['email', 'id', 'name'] expected ['email', 'id', 'name']",
+      "output": {
+       "missing_headers": [
+        "id",
+        "name",
+        "email"
+       ],
+       "found_headers": [
+        "a",
+        "b"
+       ],
+       "is_valid": false
+      }
+     },
+     {
+      "case": "empty csv",
+      "passed": true,
+      "detail": "missing_headers=['email', 'id', 'name'] expected ['email', 'id', 'name']",
+      "output": {
+       "missing_headers": [
+        "id",
+        "name",
+        "email"
+       ],
+       "found_headers": [],
+       "is_valid": false
+      }
+     },
+     {
+      "case": "quoted header",
+      "passed": false,
+      "detail": "missing_headers=['email', 'id', 'name'] expected []",
+      "output": {
+       "missing_headers": [
+        "id",
+        "name",
+        "email"
+       ],
+       "found_headers": [
+        "\"id\"",
+        "\"name\"",
+        "\"email\""
+       ],
+       "is_valid": false
+      }
+     },
+     {
+      "case": "spaces trimmed?",
+      "passed": null,
+      "detail": "not judged (spec-dependent)",
+      "output": {
+       "missing_headers": [
+        "id",
+        "name",
+        "email"
+       ],
+       "found_headers": [],
+       "is_valid": false
+      }
+     }
+    ]
+   }
+  },
+  {
+   "scenario": "files",
+   "attempt": 1,
+   "model": "qwen2.5-coder:latest",
+   "seconds": 181.6,
+   "job_status": "completed",
+   "job_error": null,
+   "stages": [
+    {
+     "name": "analyze",
+     "status": "passed",
+     "detail": "kind=code name='Find TODO and FIXME Comments'",
+     "duration_ms": 59640
+    },
+    {
+     "name": "specify",
+     "status": "passed",
+     "detail": "find-todo-and-fixme-comments@0.1.0; kind=code; permissions=['read-input-files']",
+     "duration_ms": 16
+    },
+    {
+     "name": "plan",
+     "status": "passed",
+     "detail": "SKILL.md, manifest.json, README.md, scripts/main.py, scripts/cli.py, docs/usage.md, tests/test_main.py, evals/cases.json",
+     "duration_ms": 0
+    },
+    {
+     "name": "generate_files",
+     "status": "passed",
+     "detail": "7 files; 3 eval cases",
+     "duration_ms": 65422
+    },
+    {
+     "name": "static_validation",
+     "status": "passed",
+     "detail": "round 1/4: 24 passed, 0 failed",
+     "duration_ms": 30
+    },
+    {
+     "name": "test_generation",
+     "status": "passed",
+     "detail": "tests/test_main.py",
+     "duration_ms": 54484
+    },
+    {
+     "name": "sandbox_tests",
+     "status": "passed",
+     "detail": "round 1/4: 4/4 tests passed",
+     "duration_ms": 1875
+    },
+    {
+     "name": "evaluate",
+     "status": "passed",
+     "detail": "round 1/4: 3/3 eval cases passed",
+     "duration_ms": 16
+    },
+    {
+     "name": "report",
+     "status": "passed",
+     "detail": "status=verified; static=pass, unit_tests=pass, eval_cases=pass; repair rounds=0",
+     "duration_ms": 0
+    },
+    {
+     "name": "package",
+     "status": "passed",
+     "detail": "find-todo-and-fixme-comments@0.1.0 stored (8 files), status verified",
+     "duration_ms": 30
+    }
+   ],
+   "skill": "find-todo-and-fixme-comments@0.1.0",
+   "status": "verified",
+   "tests": "4/4",
+   "evals": "3/3",
+   "sandbox": {
+    "status": "ran",
+    "error": null,
+    "kind": null,
+    "duration_ms": 1858,
+    "limits": {
+     "network": "none",
+     "memory_mb": 256,
+     "timeout_s": 10
+    }
+   },
+   "failure_category": "none",
+   "repair_rounds": 0,
+   "tests_rewritten_in_repair": 0,
+   "repair_history": [
+    {
+     "round": 1,
+     "status": "verified",
+     "tests": "4/4",
+     "evals": "3/3",
+     "failing": [],
+     "signature": "e3b0c44298fc"
+    }
+   ],
+   "failing_static": [],
+   "failing_tests": [],
+   "failing_evals": [],
+   "llm": {
+    "calls": 8,
+    "prompt_tokens": 5187,
+    "output_tokens": 2377,
+    "model_seconds": 391.69,
+    "load_seconds": 3.66,
+    "tokens_per_second": 7.4
+   },
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "files": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      }
+     }
+    },
+    "required": [
+     "files"
+    ]
+   },
+   "output_schema": {
+    "type": "object",
+    "properties": {
+     "findings": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "file": {
+         "type": "string"
+        },
+        "line": {
+         "type": "integer"
+        },
+        "marker": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "file",
+        "line",
+        "marker"
+       ]
+      }
+     },
+     "count": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "findings",
+     "count"
+    ]
+   },
+   "files": {
+    "docs/usage.md": "# Usage\n\nCall run(data) with input matching manifest.json input_schema.\n\n## Input schema\n\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"files\": {\n      \"type\": \"object\",\n      \"additionalProperties\": {\n        \"type\": \"string\"\n      }\n    }\n  },\n  \"required\": [\n    \"files\"\n  ]\n}\n```\n",
+    "evals/cases.json": "[\n  {\n    \"name\": \"no-files\",\n    \"input\": {\n      \"files\": {}\n    },\n    \"expect\": {\n      \"contains\": {\n        \"findings\": [],\n        \"count\": 0\n      }\n    }\n  },\n  {\n    \"name\": \"empty-file\",\n    \"input\": {\n      \"files\": {\n        \"empty.txt\": \"\"\n      }\n    },\n    \"expect\": {\n      \"contains\": {\n        \"findings\": [],\n        \"count\": 0\n      }\n    }\n  },\n  {\n    \"name\": \"with-todo-and-fixture\",\n    \"input\": {\n      \"files\": {\n        \"example.tsx\": \"const a = 1;\\n// TODO: Fix this\\nconst b = 2;\\n// FIXME: Remove this\"\n      }\n    },\n    \"expect\": {\n      \"contains\": {\n        \"findings\": [\n          {\n            \"file\": \"example.tsx\",\n            \"line\": 2,\n            \"marker\": \"TODO\"\n          },\n          {\n            \"file\": \"example.tsx\",\n            \"line\": 4,\n            \"marker\": \"FIXME\"\n          }\n        ],\n        \"count\": 2\n      }\n    },\n    \"holdout\": true\n  }\n]\n",
+    "manifest.json": "{\n  \"format_version\": \"1\",\n  \"id\": \"find-todo-and-fixme-comments\",\n  \"name\": \"Find TODO and FIXME Comments\",\n  \"description\": \"Identifies TODO and FIXME comments in source files and returns their locations and counts.\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"code\",\n  \"tools\": [\n    \"Read\"\n  ],\n  \"dependencies\": [],\n  \"permissions\": [\n    \"read-input-files\"\n  ],\n  \"input_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"files\": {\n        \"type\": \"object\",\n        \"additionalProperties\": {\n          \"type\": \"string\"\n        }\n      }\n    },\n    \"required\": [\n      \"files\"\n    ]\n  },\n  \"output_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"findings\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"file\": {\n              \"type\": \"string\"\n            },\n            \"line\": {\n              \"type\": \"integer\"\n            },\n            \"marker\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"file\",\n            \"line\",\n            \"marker\"\n          ]\n        }\n      },\n      \"count\": {\n        \"type\": \"integer\"\n      }\n    },\n    \"required\": [\n      \"findings\",\n      \"count\"\n    ]\n  },\n  \"execution\": {\n    \"runtime\": \"python3.12\",\n    \"entrypoint\": \"scripts/main.py\",\n    \"timeout_seconds\": 10,\n    \"memory_mb\": 256\n  },\n  \"tests\": {\n    \"framework\": \"unittest\",\n    \"path\": \"tests\"\n  },\n  \"compatibility\": [\n    \"claude-code\",\n    \"codex\",\n    \"cursor\"\n  ],\n  \"origin\": \"generated\"\n}\n",
+    "README.md": "# Find TODO and FIXME Comments\n\nIdentifies TODO and FIXME comments in source files and returns their locations and counts.\n\nVersion 0.1.0 · kind `code` · origin `generated` · generated by AI Agent Builder.\nCheck the Studio's validation report for its status (validated / verified) before relying on it.\n\n## Install\n\nCopy this folder into your agent's skills directory, for example `~/.claude/skills/` (Claude Code) or `~/.agents/skills/` (Codex). The agent reads `SKILL.md`.\n\n## Run it yourself\n\nPython 3.12, standard library only, no network:\n\n```bash\npython scripts/cli.py input.json      # prints the JSON result\npython scripts/cli.py --dir ./my-project   # reads source files from a folder\n```\n\nExample `input.json`:\n\n```json\n{\n  \"files\": {}\n}\n```\n\nInput and output contracts: `manifest.json` (`input_schema`, `output_schema`). Tests: `python -m unittest` from `tests/` with `scripts/` on the path.\n",
+    "scripts/cli.py": "\"\"\"Local runner: python scripts/cli.py [input.json] | --dir PATH\nReads JSON input (file or stdin), or builds {\"files\": {...}} from a directory, calls run(), prints JSON.\"\"\"\nimport json\nimport os\nimport sys\n\nsys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\nfrom main import run  # noqa: E402\n\nTEXT_EXT = {\".js\", \".jsx\", \".ts\", \".tsx\", \".py\", \".json\", \".md\", \".css\", \".html\", \".txt\", \".csv\"}\nSKIP_DIRS = {\"node_modules\", \".git\", \"dist\", \"build\", \".next\", \"__pycache__\", \".venv\"}\n\n\ndef collect(root):\n    files = {}\n    for d, dirs, names in os.walk(root):\n        dirs[:] = [x for x in dirs if x not in SKIP_DIRS]\n        for n in names:\n            p = os.path.join(d, n)\n            if os.path.splitext(n)[1] in TEXT_EXT and os.path.getsize(p) <= 200_000 and len(files) < 500:\n                with open(p, encoding=\"utf-8\", errors=\"replace\") as f:\n                    files[os.path.relpath(p, root).replace(os.sep, \"/\")] = f.read()\n    return {\"files\": files}\n\n\ndef main(argv):\n    if len(argv) >= 2 and argv[0] == \"--dir\":\n        data = collect(argv[1])\n    elif argv:\n        with open(argv[0], encoding=\"utf-8\") as f:\n            data = json.load(f)\n    else:\n        data = json.load(sys.stdin)\n    print(json.dumps(run(data), indent=2, ensure_ascii=False))\n\n\nif __name__ == \"__main__\":\n    main(sys.argv[1:])\n",
+    "scripts/main.py": "import re\n\n\ndef run(data: dict) -> dict:\n    findings = []\n    for path, text in data.get(\"files\", {}).items():\n        for i, line in enumerate(text.splitlines(), 1):\n            if \"TODO\" in line or \"FIXME\" in line:\n                findings.append({\"file\": path, \"line\": i, \"marker\": \"TODO\" if \"TODO\" in line else \"FIXME\"})\n    return {\"findings\": findings, \"count\": len(findings)}\n",
+    "SKILL.md": "---\nname: find-todo-and-fixme-comments\ndescription: \"Identifies TODO and FIXME comments in source files and returns their locations and counts.\"\n---\n\n# Find TODO and FIXME Comments\n\n1. Iterate through each file in the input data.\n2. Search for lines containing 'TODO' or 'FIXME'.\n3. Record the file path, line number (1-based), and the marker (TODO or FIXME).\n4. Return a list of findings and the total count.\n\n## Rules\n\n- A finding is a line containing 'TODO' or 'FIXME'.\n- Line numbers are 1-based.\n- The count is the total number of TODO and FIXME markers found.\n\n## When the input is empty or invalid\n\n- If input is empty or missing, return an empty list of findings and a count of 0.\n- If a file is empty or contains no TODO/FIXME markers, it should not be included in the findings.\n\n## How to run\n\nThis Skill ships a deterministic Python script (stdlib only). From this Skill's directory:\n\n```bash\npython scripts/cli.py --dir <path-to-project>   # builds {\"files\": {...}} from the folder\npython scripts/cli.py input.json               # or pass JSON matching the input schema\n```\n\nRead the JSON output and explain the results to the user. Do not modify files unless asked.\n",
+    "tests/test_main.py": "import unittest\nfrom main import run\n\nclass TestFindTODOandFIXME(unittest.TestCase):\n    def test_find_todo_fixme(self):\n        input_data = {\n            \"files\": {\n                \"a.py\": \"x = 1\\n# TODO: Fix this\\ny = 2\\n# FIXME: Implement this\"\n            }\n        }\n        expected_output = {\n            \"findings\": [\n                {\"file\": \"a.py\", \"line\": 2, \"marker\": \"TODO\"},\n                {\"file\": \"a.py\", \"line\": 4, \"marker\": \"FIXME\"}\n            ],\n            \"count\": 2\n        }\n        self.assertEqual(run(input_data), expected_output)\n\n    def test_no_todo_fixme(self):\n        input_data = {\n            \"files\": {\n                \"b.py\": \"x = 1\\ny = 2\\nz = 3\"\n            }\n        }\n        expected_output = {\n            \"findings\": [],\n            \"count\": 0\n        }\n        self.assertEqual(run(input_data), expected_output)\n\n    def test_empty_input(self):\n        input_data = {\n            \"files\": {}\n        }\n        expected_output = {\n            \"findings\": [],\n            \"count\": 0\n        }\n        self.assertEqual(run(input_data), expected_output)\n\n    def test_empty_file(self):\n        input_data = {\n            \"files\": {\n                \"empty.txt\": \"\"\n            }\n        }\n        expected_output = {\n            \"findings\": [],\n            \"count\": 0\n        }\n        self.assertEqual(run(input_data), expected_output)\n\nif __name__ == '__main__':\n    unittest.main()\n"
+   },
+   "oracle": {
+    "status": "pass",
+    "passed": 3,
+    "judged": 3,
+    "cases": [
+     {
+      "case": "two files",
+      "passed": true,
+      "detail": "found [('a.py', 2), ('a.py', 3), ('b.js', 3)] expected [('a.py', 2), ('a.py', 3), ('b.js', 3)]",
+      "output": {
+       "findings": [
+        {
+         "file": "a.py",
+         "line": 2,
+         "marker": "TODO"
+        },
+        {
+         "file": "a.py",
+         "line": 3,
+         "marker": "FIXME"
+        },
+        {
+         "file": "b.js",
+         "line": 3,
+         "marker": "TODO"
+        }
+       ],
+       "count": 3
+      }
+     },
+     {
+      "case": "none",
+      "passed": null,
+      "detail": "not judged (spec-dependent)",
+      "output": {
+       "findings": [
+        {
+         "file": "c.py",
+         "line": 1,
+         "marker": "TODO"
+        }
+       ],
+       "count": 1
+      }
+     },
+     {
+      "case": "empty",
+      "passed": true,
+      "detail": "found [] expected []",
+      "output": {
+       "findings": [],
+       "count": 0
+      }
+     },
+     {
+      "case": "clean",
+      "passed": true,
+      "detail": "found [] expected []",
+      "output": {
+       "findings": [],
+       "count": 0
+      }
+     }
+    ]
+   }
+  }
+ ]
+}
