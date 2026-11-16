@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api import office, public, studio
+from app.api import office, project_memory, public, studio
 from app.config import settings
 from app.db import SessionLocal, get_session_factory
 from app.readiness import readiness
@@ -77,6 +77,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)
 app.include_router(studio.router)
 app.include_router(public.router)
 app.include_router(office.router)
+app.include_router(project_memory.router)
 
 
 @app.get("/health")

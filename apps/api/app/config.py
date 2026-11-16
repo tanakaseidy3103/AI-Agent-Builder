@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     sandbox_image: str = "python:3.12-slim"
     rate_limit_per_minute: int = 30
     studio_local_only: bool = True
+    # NAS Project Memory SIMULATION: explicit allowlist of local folders, "id=path;id2=path". Empty = feature off.
+    # Served only to loopback clients, read-only. Not a UGREEN NAS connection.
+    project_memory_folders: str = ""
     # Host header allowlist (DNS-rebinding defence). "testserver" is FastAPI TestClient's host.
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "[::1]", "testserver"]
     max_run_input_bytes: int = 1_000_000
