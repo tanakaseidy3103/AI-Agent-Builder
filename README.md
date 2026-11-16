@@ -132,7 +132,7 @@ cd apps/web && npx playwright test                        # browser, desktop + m
 
 Results on this branch: backend **184 passed, 0 skipped** (re-run 2026-11-16, Windows, real Docker sandbox). Frontend,
 SDK and Playwright results are those recorded on 2026-11-06 in [docs/TESTING.md](docs/TESTING.md); they were not
-re-run for this README.
+re-run for this README. That file still lists 139 backend tests from 2026-11-06; the 184 above is the current count.
 
 ## Documentation
 
