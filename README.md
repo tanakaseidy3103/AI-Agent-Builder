@@ -14,7 +14,7 @@ from its real failures, and given a status that is decided by the checks, never 
 [Limits of verification](#what-verified-does-and-does-not-mean) · [Screenshots](#screenshots) · [Architecture](#architecture) ·
 [Stack](#technology-stack) · [Prerequisites](#prerequisites) · [Installation](#installation) · [Configuration](#environment-configuration) ·
 [Backend](#start-the-backend) · [Frontend](#start-the-frontend) · [Tests](#run-the-tests) · [Generate and export](#generate-and-export-a-skill) ·
-[Demo Mode](#demo-mode) · [Limitations and roadmap](#limitations-and-roadmap) · [Repository](#repository-structure) · [License](#contributing-and-license)
+[API](#api-endpoints) · [Security model](#security-model) · [Demo Mode](#demo-mode) · [NAS Project Memory](#nas-project-memory-simulation) · [Limitations and roadmap](#limitations-and-roadmap) · [Repository](#repository-structure) · [License](#contributing-and-license)
 
 ## Vision
 
@@ -38,6 +38,8 @@ is offered for export.
 - Studio UI: live pipeline view, code workspace, a **Skill Flow** diagram built from the real files, evaluations
   per version, export with install commands for Claude Code, Codex and Cursor. English and Japanese.
 - Public **Demo Mode**: anonymous, isolated visitor sessions with limits, served from the author's machine.
+- **NAS Project Memory harness (SIMULATION)**: a read-only, deterministic run of the UGREEN Skill's workflow on an
+  allowlisted local folder, with cited answers and a reviewer that rejects unsupported quotes. Not a NAS connection.
 
 ## How Skill generation works
 
@@ -211,6 +213,8 @@ cp .env.example apps/api/.env   # never commit it
 | `LLM_MODEL` | `qwen2.5-coder:latest` | model used for generation |
 | `STORAGE_DIR` | `data` | where Skill packages are stored |
 | `SANDBOX_IMAGE` | `python:3.12-slim` | sandbox image |
+| `STUDIO_LOCAL_ONLY` | `true` | Studio routes answer loopback clients only |
+| `PROJECT_MEMORY_FOLDERS` | empty (off) | `id=path;id2=path` allowlist for the NAS Project Memory SIMULATION |
 
 Demo Mode uses `DEMO_*` variables in `apps/api/.env.demo` ([template](apps/api/.env.demo.example)).
 
@@ -244,6 +248,10 @@ cd packages/sdk-python && PYTHONPATH=. python -m pytest tests -q   # Python SDK
 cd apps/api && .venv/Scripts/python.exe -u scripts/e2e_real_ollama.py   # real model + sandbox + independent oracle
 ```
 
+Results on this branch (2026-11-16, Windows): backend **377 passed, 1 skipped** (the skip is a symlink test that needs
+admin rights on Windows; the junction variant runs), including 47 NAS harness tests (mocked environment).
+Results for the rest of the stack, unchanged on this branch, are in [docs/TESTING.md](docs/TESTING.md).
+
 Latest results and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
 
 ## Generate and export a Skill
@@ -257,6 +265,34 @@ Latest results and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
 Generated Skills can also be called through the local `/v1` API with an API key, or the Python SDK in
 `packages/sdk-python`.
 
+## API endpoints
+
+| Route | Access | Purpose |
+|---|---|---|
+| `POST /studio/skills/plan`, `POST /studio/skills/generate`, `GET /studio/jobs/{id}` | Studio (local) | plan and generate a Skill, follow the job |
+| `GET /studio/skills`, `GET /studio/versions/{id}`, `POST /studio/versions/{id}/validate` | Studio (local) | list Skills, read a version and its report, revalidate |
+| `GET /studio/versions/{id}/export/{target}`, `GET /studio/versions/{id}/install/{target}` | Studio (local) | ZIP and install commands (`claude-code`, `codex`, `cursor`, `canonical`) |
+| `POST /studio/api-keys`, `GET /studio/audit`, `GET /studio/evaluations` | Studio (local) | API keys, audit log, evaluation history |
+| `GET /studio/agents`, `GET /studio/events`, WebSocket | Studio (local) | live pipeline roles and events |
+| `GET /studio/project-memory/folders`, `POST /studio/project-memory/ask` | loopback only, off by default | NAS Project Memory SIMULATION |
+| `GET /v1/skills`, `POST /v1/skills/{slug}/run`, `GET /v1/runs/{id}` | `Authorization: Bearer <API key>` | run a stored Skill in the sandbox |
+| `GET /health`, `GET /health/ready` | open | liveness, readiness |
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/skills/<slug>/run -H "Authorization: Bearer <your-api-key>"      -H "content-type: application/json" -d '{"input": {}}'
+```
+
+## Security model
+
+- Studio routes serve the local machine only and refuse cross-site browser requests; there are no user accounts.
+- Generated code runs only in the Docker sandbox: no network, read-only file system, non-root, all capabilities
+  dropped, CPU, memory, process and time limits. It never runs on the host.
+- Static checks reject unsafe instructions, secrets and risky Python before execution (a quality gate, not a
+  security boundary).
+- API keys are stored hashed and can be revoked; Skill runs are logged.
+- Demo Mode is a separate process with its own data and limits; it has no admin, install, `/v1` or Project Memory routes.
+- Details and open risks: [docs/SECURITY.md](docs/SECURITY.md).
+
 ## Demo Mode
 
 A visitor-safe backend (`app.demo.app`) for showing the product publicly from the author's machine:
@@ -268,6 +304,21 @@ A visitor-safe backend (`app.demo.app`) for showing the product publicly from th
 
 Details: [docs/DEMO.md](docs/DEMO.md), deployment options: [docs/DEPLOY.md](docs/DEPLOY.md), Windows scripts:
 [deploy/homelab/](deploy/homelab/).
+
+## NAS Project Memory (SIMULATION)
+
+`apps/api/app/nas/` runs the read workflow of the UGREEN Skill on a local folder: Planner → Researcher (documented
+read actions `ug-filesystem ls/find/cat`, `ug-knowledge collect-evidence`, served by a local adapter) → Analyst
+(rules for decisions, tasks, owners, deadlines, risks, requirements, conflicts, duplicates) → Reviewer (every
+confirmed claim must quote text that exists in the folder). No model call; about 15 ms on the sample project.
+
+```bash
+cd apps/api && python scripts/project_memory_sim.py   # sample project, prints a cited answer marked SIMULATION
+```
+
+**This is not a UGREEN integration.** On a NAS, the Skill runs inside Uliya and the platform experts do the work; the
+Skill Kit documents no off-device API, so the `UliyaAdapter` refuses rather than pretending. Design, security model,
+tests and gaps: [docs/NAS_PROJECT_MEMORY.md](docs/NAS_PROJECT_MEMORY.md).
 
 ## Limitations and roadmap
 
@@ -283,13 +334,14 @@ Full list: [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Roadmap: [doc
 
 [hackathons/ugreen-2026/](hackathons/ugreen-2026/) contains **NAS Project Memory**, a Skill written during the
 UGREEN Hackathon 2026 on AI NAS in UGREEN's own Skill format (Markdown that delegates to NAS experts). It is
-independent from the code in this repository; applying AI Agent Builder's verification approach to UGREEN Skills is
-future work.
+independent from the code in this repository and has not yet run on a NAS (finalists get one remote-access day on a
+UGREEN AI NAS). The local harness above tests its read workflow in SIMULATION only.
 
 ## Repository structure
 
 ```text
 apps/api/            FastAPI backend: pipeline, validation, sandbox, Studio and Demo APIs, tests
+apps/api/app/nas/    NAS Project Memory SIMULATION harness (read-only, local folders)
 apps/web/            React Studio, Vitest unit tests, Playwright end-to-end tests
 packages/contracts/  shared JSON Schema contracts
 packages/sdk-python/ Python SDK for the /v1 API
