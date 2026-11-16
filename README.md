@@ -257,10 +257,22 @@ Results on this branch, re-run 2026-11-16 with saved logs (Windows 11, Docker 29
 | UGREEN Skill package | 29 passed |
 | Frontend unit (Vitest) | 90 passed |
 | Production build | OK |
-| Playwright local, desktop + mobile (mocked LLM, real API and sandbox) | 72 passed, 0 failed, 36 skipped (opt-in real-model and screenshot tests, desktop-only tests in the mobile project) |
-| Playwright Demo Mode, desktop + mobile | 16 passed, 2 skipped (opt-in UX tour) |
+| Playwright local, desktop + mobile (mocked LLM, real API and sandbox) | 72 passed, 0 failed, 36 skipped: 8 opt-in (real-model and screenshot tests), 25 desktop-only tests in the mobile project, 3 **not run for missing test data** (see below) |
+| Playwright Demo Mode, desktop + mobile | 16 passed, 2 skipped (opt-in UX tour); temporary test configuration, see below |
 
-Python SDK: unchanged from `audit/security-hardening` (6 passed there). Details: [docs/TESTING.md](docs/TESTING.md).
+Skipped for missing test data (skipped, **not passed**): the fresh mocked-LLM database has no fixture for them.
+- `journeys.spec.ts` "returning user" (desktop): needs a Skill with status `validated`; the database has none.
+- `real.spec.ts` "a generated Skill that failed validation cannot be exported" (desktop and mobile): needs a Skill
+  with status `validation_failed`; the database has none.
+
+The Demo Mode run used a temporary copy of `apps/web/playwright.demo.config.ts` outside the repository. It differs
+only in the test environment: the Python interpreter (the uv base interpreter, because Windows Application Control
+blocks the virtualenv launcher on this machine) with `PYTHONPATH` pointing at the locked dependencies, an in-memory
+SQLite database for the harness, a temporary output directory, and absolute paths to the repository because the copy
+lives outside it. Tests, ports and Demo Mode settings are unchanged. These are test-environment differences, not
+changes to the production or repository configuration.
+
+Python SDK: unchanged from `audit/security-hardening` (6 passed there).
 
 Latest results and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
 
