@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NAS Project Memory — Project Proposal</title>
+<style>
+  @page { size: A4; margin: 12mm 16mm; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 9.6pt; line-height: 1.36; color: #111; }
+  h1 { font-size: 15.5pt; margin: 0 0 2px; }
+  .sub { color: #444; margin: 0 0 8px; font-size: 9.8pt; }
+  h2 { font-size: 10.4pt; margin: 8px 0 2px; color: #1d3f8f; }
+  p, ul { margin: 0 0 4px; }
+  ul { padding-left: 17px; }
+  li { margin: 1px 0; }
+  code { font-family: Consolas, monospace; font-size: 9pt; }
+</style>
+</head>
+<body>
+<main>
+<h1>AI-Agent-Builder for UGREEN AI NAS: NAS Project Memory</h1>
+<p class="sub">First application of evidence-checked Skill design to Uliya. Submitted Skill: <code>nas-project-memory</code>.</p>
+
+<h2>1. What it does</h2>
+<p>Answers questions about a project from the documents in a NAS folder the user chooses, citing a source for every claim.</p>
+
+<h2>2. Target user and problem</h2>
+<p>Small teams, students and freelancers keep project files on their NAS. Months later nobody remembers what was
+decided, which decision replaced which, or who owns a task. Generic AI answers confidently without showing where an
+answer comes from.</p>
+
+<h2>3. Solution</h2>
+<p>Every answer separates <b>confirmed</b> facts (quoted, with file and location), <b>inferences</b> (labelled, with
+their basis) and <b>unknowns</b> (reported, never filled in), and lists conflicting or superseded statements with both
+sources.</p>
+
+<h2>4. Main user flow</h2>
+<p>The user names a folder and asks a question → documents are found → cited evidence is collected → documents are
+analysed → a structured answer with coverage is returned → optionally, after approval, saved as a note.</p>
+
+<h2>5. Difference from existing tools</h2>
+<p>NAS search finds files; chat assistants summarize. This Skill rebuilds project state with traceable sources, admits
+gaps, flags contradictions, and treats document text as data, never as instructions.</p>
+
+<h2>6. NAS features used</h2>
+<ul>
+  <li>Step 1: <code>ug-filesystem → file-agent</code> discovers documents in the chosen folder only.</li>
+  <li>Step 2: <code>ug-knowledge → knowledge-agent</code> collects evidence; step 5 saves the optional note.</li>
+  <li>Step 3: <code>ug-document → document-agent</code> answers, extracts decisions, tasks and dates, and detects conflicts.</li>
+</ul>
+
+<h2>7. Technical approach</h2>
+<p>A Markdown orchestration Skill following the Uliya standard: <code>delegate</code> calls only, no scripts. Inputs:
+folder, question, optional limits. Steps 1–3 read only; the note is the single write and needs approval. All five
+delegation states are handled; partial results are labelled. Models are those of the platform experts. Data handling
+follows the platform; documents are never sent elsewhere by the Skill.</p>
+
+<h2>8. Status</h2>
+<p>Built during the Hackathon: the Skill and five references. The official checker returns <code>static-pass</code>
+(0 errors, 0 warnings); 29 local tests pass. Not built: applying AI-Agent-Builder (my earlier, separate project) to
+generate and test Uliya Skills; that is future work. Not yet run on a NAS.</p>
+
+<h2>9. Test cases</h2>
+<ul>
+  <li>Core: "Which payment provider did we choose?" reports provider A and the later provider B, both cited, B current.</li>
+  <li>Core: "Who owns the invoice migration?" answers "owner not stated" instead of guessing.</li>
+  <li>Edge: a hidden instruction inside a document is reported as a warning and not followed.</li>
+</ul>
+
+<h2>10. Limits and dependencies</h2>
+<p>Depends on the three platform experts and their accuracy on scanned or unusual files. Untested on a device until
+the final round. Single folder per request; no monitoring of new documents, which the catalog does not offer.</p>
+</main>
+</body>
+</html>

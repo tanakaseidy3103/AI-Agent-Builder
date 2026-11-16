@@ -1,0 +1,119 @@
+{
+  "zip": "nas-project-memory.zip",
+  "sha256": "6c956e2cc367247b18efec08c42c6c385a5adef96afc4de22209f1a516169e71",
+  "compressed_bytes": 9070,
+  "uncompressed_bytes": 18299,
+  "files": [
+    "SKILL.md",
+    "references/answer-format.md",
+    "references/disclosure.md",
+    "references/question-patterns.md",
+    "references/setup-and-testing.md",
+    "references/untrusted-documents.md"
+  ],
+  "checks": [
+    {
+      "check": "compressed size <= 10 MiB",
+      "pass": true,
+      "detail": "9070 bytes"
+    },
+    {
+      "check": "single root folder named after the Skill",
+      "pass": true,
+      "detail": "nas-project-memory"
+    },
+    {
+      "check": "SKILL.md present at the Skill root",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "only SKILL.md and references/*.md",
+      "pass": true,
+      "detail": "ok"
+    },
+    {
+      "check": "no hidden files",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "file count <= 100",
+      "pass": true,
+      "detail": "6"
+    },
+    {
+      "check": "each file <= 1 MiB",
+      "pass": true,
+      "detail": "largest 8935 bytes"
+    },
+    {
+      "check": "uncompressed total <= 10 MiB",
+      "pass": true,
+      "detail": "18299 bytes"
+    },
+    {
+      "check": "all files are UTF-8 text (no binaries)",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "check": "no credential or key patterns",
+      "pass": true,
+      "detail": "none found"
+    },
+    {
+      "check": "byte-identical to skill/ sources",
+      "pass": true,
+      "detail": "6 files compared"
+    },
+    {
+      "check": "official checker on the extracted copy: static-pass",
+      "pass": true,
+      "detail": "static-pass {'errors': 0, 'warnings': 0, 'info': 0}"
+    }
+  ],
+  "official_checker": {
+    "checkFormatVersion": "2.0.0",
+    "status": "static-pass",
+    "target": {
+      "skillName": "nas-project-memory"
+    },
+    "catalog": {
+      "checkedVersion": "2.0.0"
+    },
+    "files": [
+      {
+        "path": "references/answer-format.md",
+        "sha256": "7e5c8c04a7521eae9009a233419591afd444a4f3b21ce7d25f6f7e8ad1c2f9f4"
+      },
+      {
+        "path": "references/disclosure.md",
+        "sha256": "b72df04da453482c224656e56176cc7496d829d53de1dcc1a43aa90b91c781d0"
+      },
+      {
+        "path": "references/question-patterns.md",
+        "sha256": "fa1879b96ea3b27dfdb053374618056079ddb709ff483b70ad733aca77fae93a"
+      },
+      {
+        "path": "references/setup-and-testing.md",
+        "sha256": "2d91a64ed5513d66d84f42207e672552e10ba14e5b7bb80f38cdc4c7465606b1"
+      },
+      {
+        "path": "references/untrusted-documents.md",
+        "sha256": "c03d44a6f8565ef49f6a28497759760d30860afbf8e2a78027d660ecf7efeec4"
+      },
+      {
+        "path": "SKILL.md",
+        "sha256": "46c820d0ec1bda9df655d9b50dae79e96a933b69abe746eab95c3a8c5ac4ab16"
+      }
+    ],
+    "summary": {
+      "errors": 0,
+      "warnings": 0,
+      "info": 0
+    },
+    "diagnostics": []
+  },
+  "passed": true
+}

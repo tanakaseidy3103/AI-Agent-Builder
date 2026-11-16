@@ -1,0 +1,10 @@
+{
+  "pdf": "project-proposal.pdf",
+  "words": 440,
+  "maxWords": 500,
+  "bytes": 61742,
+  "maxBytes": 1000000,
+  "pages": 1,
+  "isPdf": true,
+  "pass": true
+}
