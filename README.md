@@ -6,6 +6,11 @@ Describe an AI agent in plain language. AI Agent Builder generates a reusable, t
 
 就職作品 — HAL名古屋 · 日本語の手順: [docs/ja/QUICKSTART.md](docs/ja/QUICKSTART.md)
 
+> **This branch** (`integration/hal-readiness`, 2026-11-09) has the same application code as
+> `feature/phase1-compiler-reliability` plus one reference-loader fix, and adds the HAL Nagoya documentation and
+> audits. Security hardening, Demo Mode, the UX redesign and the UGREEN Hackathon Skill are on
+> `audit/security-hardening`; the NAS Project Memory simulation harness is on `feature/nas-project-memory-runtime`.
+
 ![Agent Studio — desktop view (English)](docs/evidence/screenshots/final-studio-start.png)
 
 ---
@@ -164,7 +169,7 @@ cp .env.example apps/api/.env
 # Edit apps/api/.env if you need a non-default Postgres password or model
 ```
 
-Default `apps/api/.env`:
+Default `apps/api/.env` (replace `change-me` with your own password; never commit `.env`):
 ```
 DATABASE_URL=postgresql+psycopg://aab:change-me@127.0.0.1:5433/aab
 OLLAMA_BASE_URL=http://localhost:11434
@@ -315,6 +320,21 @@ curl -X POST http://localhost:8000/v1/skills/python-code-analyzer/run \
 
 ---
 
+## Studio API endpoints
+
+All Studio routes answer loopback clients only (no user accounts yet).
+
+| Route | Purpose |
+|---|---|
+| `POST /studio/skills/plan`, `POST /studio/skills/generate`, `GET /studio/jobs[/{id}]` | plan and generate a Skill, follow jobs |
+| `GET /studio/skills`, `GET /studio/versions/{id}[/files/{path}]`, `POST /studio/versions/{id}/validate` | Skills, versions, files, revalidation |
+| `GET /studio/versions/{id}/export/{target}`, `GET /studio/versions/{id}/install/{target}` | ZIP and install commands |
+| `POST /studio/projects/analyze`, `POST /studio/versions/{id}/project/plan` and `/apply` | install a Skill into a project folder, plan first |
+| `POST/GET/DELETE /studio/api-keys`, `GET /studio/audit`, `GET /studio/evaluations` | keys, audit log, evaluation history |
+| `GET /studio/agents`, `GET /studio/events`, `GET /studio/runs/{id}/events` | Agent Office roles and events |
+
+---
+
 ## Supported integrations
 
 | Integration | Implementation | End-to-end tested | Evidence |
@@ -333,11 +353,11 @@ curl -X POST http://localhost:8000/v1/skills/python-code-analyzer/run \
 ```bash
 # Backend (requires Docker running for real sandbox tests)
 cd apps/api
-.venv\Scripts\python.exe -m pytest -q        # 184 tests
+.venv\Scripts\python.exe -m pytest -q
 
 # Frontend unit tests + build
 cd apps/web
-npx vitest run                                # 30 tests
+npx vitest run
 npm run build                                 # TypeScript check + production build
 
 # Python SDK
@@ -354,6 +374,9 @@ mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
 result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromModule(mod))
 "
 ```
+
+Results on this branch: backend **184 passed, 0 skipped** (re-run 2026-11-16, Windows, real Docker sandbox). Other suites were
+not re-run for this README; recorded results are in [docs/TESTING.md](docs/TESTING.md).
 
 Full test documentation: [docs/TESTING.md](docs/TESTING.md)
 
@@ -372,6 +395,13 @@ See [docs/SECURITY.md](docs/SECURITY.md) for the complete security model.
 - Secret detection: 6 provider-format patterns + generic assignment check on all generated files.
 - API keys stored as SHA-256 hashes, never plaintext.
 - Studio accessible from localhost only (loopback + Host header check prevents DNS-rebinding).
+
+---
+
+## UGREEN NAS integration
+
+**None on this branch.** It contains no UGREEN or NAS code. See `audit/security-hardening` (UGREEN Hackathon Skill)
+and `feature/nas-project-memory-runtime` (local simulation harness, not a NAS connection).
 
 ---
 
