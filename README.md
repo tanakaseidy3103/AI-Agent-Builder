@@ -248,9 +248,19 @@ cd packages/sdk-python && PYTHONPATH=. python -m pytest tests -q   # Python SDK
 cd apps/api && .venv/Scripts/python.exe -u scripts/e2e_real_ollama.py   # real model + sandbox + independent oracle
 ```
 
-Results on this branch (2026-11-16, Windows): backend **377 passed, 1 skipped** (the skip is a symlink test that needs
-admin rights on Windows; the junction variant runs), including 47 NAS harness tests (mocked environment).
-Results for the rest of the stack, unchanged on this branch, are in [docs/TESTING.md](docs/TESTING.md).
+Results on this branch, re-run 2026-11-16 with saved logs (Windows 11, Docker 29.9.2, real sandbox):
+
+| Suite | Result |
+|---|---|
+| Backend (`pytest`) | 377 passed, 1 skipped (a symlink test that needs admin rights on Windows; the junction variant runs) |
+| of which NAS Project Memory harness | 47 passed, 1 skipped: **mocked environment (SIMULATION), not NAS validation** |
+| UGREEN Skill package | 29 passed |
+| Frontend unit (Vitest) | 90 passed |
+| Production build | OK |
+| Playwright local, desktop + mobile (mocked LLM, real API and sandbox) | 72 passed, 0 failed, 36 skipped (opt-in real-model and screenshot tests, desktop-only tests in the mobile project) |
+| Playwright Demo Mode, desktop + mobile | 16 passed, 2 skipped (opt-in UX tour) |
+
+Python SDK: unchanged from `audit/security-hardening` (6 passed there). Details: [docs/TESTING.md](docs/TESTING.md).
 
 Latest results and what each layer proves: [docs/TESTING.md](docs/TESTING.md).
 

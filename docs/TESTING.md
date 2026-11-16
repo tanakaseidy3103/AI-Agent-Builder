@@ -36,6 +36,7 @@ with the uv base interpreter and the locked dependencies on `PYTHONPATH` (instal
 | Frontend unit | `npx vitest run` | **90 passed** |
 | Type check + production build | `npm run build` | OK (137 KB gzip main JS) |
 | Playwright local, desktop + mobile (mocked LLM, real API and sandbox) | `npx playwright test` | **69 passed, 1 failed, 2 did not run, 36 skipped**. The failure is environmental: `mock-workflow.spec.ts` step 5 runs the installed Skill with `apps/api/.venv/Scripts/python.exe`, which Windows blocks (`spawnSync … UNKNOWN`); the 2 "did not run" are the following steps of that serial test. It passed on 2026-11-14 |
+| Playwright local, re-run 14:41 JST | `npx playwright test` (mocked-LLM API started with the base interpreter) | **72 passed, 0 failed**, 36 skipped. The environmental failure above did not recur |
 | Playwright Demo Mode, desktop + mobile | `npm run e2e:demo` (same config, harness started with the base interpreter) | **16 passed**, 2 skipped (opt-in UX tour) |
 | UGREEN official checker | `node <uliya-skill-kit>/scripts/check-skill.mjs hackathons/ugreen-2026/skill/nas-project-memory` | `static-pass`, 0 errors, 0 warnings |
 
