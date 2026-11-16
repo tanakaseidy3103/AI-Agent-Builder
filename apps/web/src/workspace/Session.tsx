@@ -1,7 +1,7 @@
 /** Center: the request conversation, the real plan, the live pipeline and the outcome. */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, type FailureCategory, type Job, type Models, type VersionDetail } from "../api";
+import { DEMO, api, demoCode, parseTime, setDemoCode, type DemoStatus, type FailureCategory, type Job, type Models, type VersionDetail } from "../api";
 import { useLang, useT, type Key } from "../i18n";
 import { useJob } from "./hooks";
 import { Pencil, Retry, Send, Spark } from "./icons";
@@ -9,6 +9,7 @@ import { Button, ErrorNote, StatusPill, field, sectionTitle } from "./kit";
 import { PlanReview, type PlanOut } from "./PlanReview";
 import { UseAgent } from "./UseAgent";
 import { JOURNEY } from "./agents";
+import { taskOf } from "./Office";
 import type { Draft } from "../pages/Studio";
 
 export interface Request { jobId: string; prompt: string; kind: string; model?: string }
@@ -101,6 +102,12 @@ export function Session({ requests, onSubmit, onOpen, openId, draft, onAwaitingA
                   ))}
                 </div>
               </div>
+              <section aria-label={t("tips.title")} className="rounded-lg border border-line bg-panel px-4 py-3">
+                <h2 className={`${sectionTitle} mb-1.5`}>{t("tips.title")}</h2>
+                <ul className="list-disc space-y-1 pl-5 text-[12.5px] leading-snug text-mute">
+                  {(["tips.1", "tips.2", "tips.3", "tips.4"] as Key[]).map((k) => <li key={k}>{t(k)}</li>)}
+                </ul>
+              </section>
             </section>
           )}
           <ol className="space-y-8" aria-label={t("chat.title")}>
@@ -140,6 +147,8 @@ export function Session({ requests, onSubmit, onOpen, openId, draft, onAwaitingA
               </Button>
             </div>
           </div>
+          <DemoCodeField />
+          <p className="text-[11.5px] leading-snug text-faint">{t("chat.duration")}</p>
           <details className="group text-xs">
             <summary className="cursor-pointer select-none text-mute hover:text-ink">{t("chat.advanced")}</summary>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -152,10 +161,12 @@ export function Session({ requests, onSubmit, onOpen, openId, draft, onAwaitingA
                   <option value="code">{t("chat.kind.code")}</option>
                 </select>
               </span>
-              <label className="flex items-center gap-2 text-ink">
-                <input type="checkbox" className="accent-[var(--color-accent)]" checked={reviewFirst} onChange={(e) => setReviewFirst(e.target.checked)} />
-                {t("plan.reviewFirst")}
-              </label>
+              {!DEMO && (  // plan review asks the model for a draft plan; the demo keeps model time for real generations
+                <label className="flex items-center gap-2 text-ink">
+                  <input type="checkbox" className="accent-[var(--color-accent)]" checked={reviewFirst} onChange={(e) => setReviewFirst(e.target.checked)} />
+                  {t("plan.reviewFirst")}
+                </label>
+              )}
             </div>
           </details>
           {tooShort && <p id="prompt-hint" className="text-xs text-warn">{t("chat.minLength")}</p>}
@@ -188,6 +199,7 @@ function Turn({ req, onOpen, onRetry, onRefine, openId }: { req: Request; onOpen
       <div className="space-y-3">
         {job.error && <ErrorNote error={job.error} />}
         {j && <p className="text-sm text-mute">{t("chat.started", { provider: j.provider ?? "…" })}</p>}
+        {j && j.status !== "completed" && j.status !== "failed" && <RunLine job={j} />}
         {plan.length > 0 && (
           <section className="rounded-lg border border-line bg-panel px-4 py-3" aria-label={t("ws.plan")}>
             <h3 className={`${sectionTitle} mb-1.5`}>{t("ws.plan")}</h3>
@@ -228,5 +240,47 @@ function Turn({ req, onOpen, onRetry, onRefine, openId }: { req: Request; onOpen
         )}
       </div>
     </li>
+  );
+}
+
+/** One live line per running request, only from the job's real stages and its creation time: no estimate, no percentage. */
+export function elapsed(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
+function RunLine({ job }: { job: Job }) {
+  const t = useT();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  const running = job.stages.find((s) => s.status === "running");
+  const done = job.stages.filter((s) => s.status === "passed").length;
+  const started = job.created_at ? parseTime(job.created_at) : NaN;
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md border border-accent/25 bg-accent/[0.05] px-3 py-2 text-[12.5px] text-ink" role="status" data-testid="run-line">
+      <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" aria-hidden="true" />
+      {running ? <span className="font-medium">{t("run.now", { task: taskOf(t, running.name, running.detail) })}</span>
+        : job.status === "draft" ? <span className="font-medium">{t("st.draft")}</span> : null}
+      {job.stages.length > 0 && <span className="text-mute">{t("run.steps", { done, total: job.stages.length })}</span>}
+      {!Number.isNaN(started) && <span className="tabular-nums text-faint">{t("bot.elapsed", { t: elapsed(now - started) })}</span>}
+    </p>
+  );
+}
+
+/** Presentation mode only: the server asks for the shared access code (DEMO_ACCESS_CODE) to create a Skill. */
+function DemoCodeField() {
+  const t = useT();
+  const status = useQuery({ queryKey: ["demo-status"], queryFn: () => api<DemoStatus>("/demo/status"), enabled: DEMO,
+    refetchInterval: 30_000, retry: 1 });
+  const [code, setCode] = useState(demoCode);
+  if (!DEMO || !status.data?.access_code_required) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="demo-code">
+      <label htmlFor="demo-code" className="text-xs font-medium text-ink">{t("demo.code")}</label>
+      <input id="demo-code" type="password" autoComplete="off" value={code} aria-describedby="demo-code-help"
+        onChange={(e) => { setCode(e.target.value); setDemoCode(e.target.value.trim()); }}
+        className={`${field} h-8 max-w-[14rem] py-1`} />
+      <p id="demo-code-help" className="w-full text-[11.5px] leading-snug text-faint">{t("demo.codeHelp")}</p>
+    </div>
   );
 }

@@ -73,7 +73,7 @@ export function Evaluations() {
                       <span className="block truncate text-[13px] font-medium text-ink">{r.name}</span>
                       <span className="block truncate font-mono text-[11px] text-faint">{r.slug}@{r.version} · {r.model ?? "—"} · {when(r.validated_at)}</span>
                     </span>
-                    <Ladder levels={reached(r.status, r.criteria, r.tests_total + r.evals_total > 0)} />
+                    <Ladder levels={reached(r.status, r.criteria, r.tests_total + r.evals_total > 0)} origin={r.origin} />
                     <span className="text-[12px] tabular-nums text-mute">
                       {t("ev.tests")} <b className="text-ok" title={t("ev.passed")}>✓ {r.tests_passed}</b>{testsFailed > 0 && <> <b className="text-bad" title={t("ev.failed")}>✗ {testsFailed}</b></>}
                       {" · "}{t("ev.cases")} <b className="text-ok" title={t("ev.passed")}>✓ {r.evals_passed}</b>{evalsFailed > 0 && <> <b className="text-bad" title={t("ev.failed")}>✗ {evalsFailed}</b></>}

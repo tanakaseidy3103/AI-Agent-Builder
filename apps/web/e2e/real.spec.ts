@@ -48,7 +48,7 @@ test("a verified reference Skill: criteria, sandbox evidence and a downloadable 
   const card = page.getByTestId("agent-api-test-planner");
   await expect(card.getByRole("listitem").last()).toHaveAttribute("data-reached", "true"); // verified, from /studio/evaluations
   await card.getByRole("button", { name: "Open" }).click();
-  await expect(page.getByText(/api-test-planner@1\.0\.0/).first()).toBeVisible();
+  await expect(page.getByText(/api-test-planner@1\.1\.0/).first()).toBeVisible(); // 1.1.0: no-auth also for public operations
   await page.getByRole("tab", { name: "Validation" }).click();
   await expect(page.getByText(/ran · \d+ ms · no network · 256 MB/)).toBeVisible();
   for (const id of ["static", "unit_tests", "eval_cases"]) {

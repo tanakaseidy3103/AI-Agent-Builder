@@ -1,7 +1,7 @@
 /** My Agents: every stored Skill with its real status, evidence and model; open, edit, test, export, delete. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { api, type EvalSkill, type Job, type SkillRow } from "../api";
+import { DEMO, api, type EvalSkill, type Job, type SkillRow } from "../api";
 import { useT } from "../i18n";
 import { go, href } from "../route";
 import { reached } from "../workspace/evidence";
@@ -35,6 +35,9 @@ export function Agents({ onEdit }: { onEdit: (text: string) => void }) {
         {skills.error && <ErrorNote error={skills.error} />}
         {skills.isPending && <p className="text-sm text-mute">{t("skills.loading")}</p>}
         {skills.data?.length === 0 && <Empty icon={<Plus size={16} />} title={t("ag.empty")} body={t("skills.empty")} />}
+        {(skills.data ?? []).some((s) => s.latest && byVersion.get(s.latest.id)?.origin === "reference") && (
+          <p className="rounded-md border border-info/25 bg-info/[0.06] px-3 py-2 text-[12.5px] text-ink/90">{t("ag.exampleHint")}</p>
+        )}
         {!!skills.data?.length && (
           <div className="flex flex-wrap items-center gap-2" role="search">
             <label htmlFor="agent-search" className="sr-only">{t("ag.search")}</label>
@@ -81,13 +84,19 @@ function AgentCard({ s, ev, prompt, onEdit, onDelete }: {
     <li className={`${card} flex min-w-0 flex-col gap-3 p-4`} data-testid={`agent-${s.slug}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <a href={href("code", v.id)} className="text-sm font-semibold text-ink hover:text-accent-ink">{s.name}</a>
+          <p className="flex flex-wrap items-center gap-2">
+            <a href={href("code", v.id)} className="inline-flex min-h-6 items-center text-sm font-semibold text-ink hover:text-accent-ink">{s.name}</a>
+            {ev?.origin === "reference" && (
+              <span title={t("ag.exampleTitle")} data-testid="example-badge"
+                className="inline-flex h-5 items-center rounded bg-info/10 px-1.5 text-[11px] font-medium text-info ring-1 ring-inset ring-info/25">{t("ag.example")}</span>
+            )}
+          </p>
           <p className="truncate font-mono text-[11.5px] text-faint">{s.slug}@{v.version} · {v.kind} · {t("ag.versions", { n: s.versions })}</p>
         </div>
         <StatusPill status={v.status} />
       </div>
       <p className="line-clamp-2 text-[12.5px] text-mute">{s.description}</p>
-      {ev ? <Ladder levels={reached(v.status, ev.criteria, ev.tests_total + ev.evals_total > 0)} /> : <p className="text-[11px] text-faint">{t("ag.noEval")}</p>}
+      {ev ? <Ladder levels={reached(v.status, ev.criteria, ev.tests_total + ev.evals_total > 0)} origin={ev.origin} /> : <p className="text-[11px] text-faint">{t("ag.noEval")}</p>}
       <p className="flex flex-wrap gap-x-3 text-[11px] text-faint">
         <span className="font-mono">{ev?.model ?? "—"}</span><span>{t("ag.updated")} {when(v.created_at)}</span>
       </p>
@@ -100,7 +109,7 @@ function AgentCard({ s, ev, prompt, onEdit, onDelete }: {
         <Button size="sm" variant="quiet" disabled={test.isPending} onClick={() => test.mutate()}><Flask size={13} />{test.isPending ? t("ag.testing") : t("ag.test")}</Button>
         <Button size="sm" variant="quiet" disabled={!exportable} title={exportable ? undefined : t("export.blocked")} onClick={() => go("code", v.id, "export")}>
           <Download size={13} />{t("ag.export")}</Button>
-        <Button size="sm" variant="quiet" className="ml-auto text-bad hover:text-bad" onClick={onDelete} aria-label={`${t("ag.delete")} ${s.slug}`}><Trash size={13} />{t("ag.delete")}</Button>
+        {!DEMO && <Button size="sm" variant="quiet" className="ml-auto text-bad hover:text-bad" onClick={onDelete} aria-label={`${t("ag.delete")} ${s.slug}`}><Trash size={13} />{t("ag.delete")}</Button>}
       </div>
     </li>
   );

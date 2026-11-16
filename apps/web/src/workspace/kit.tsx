@@ -1,5 +1,5 @@
 /** Workspace primitives: status marks, pills, buttons, tabs, code, empty/error states. */
-import { useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { useT, type Key } from "../i18n";
 import { highlightLine, langOf } from "./highlight";
 import { Alert, Check, Clock, Cross } from "./icons";
@@ -85,18 +85,35 @@ export function Tabs<T extends string>({ value, onChange, items, label }: { valu
 const TOKEN: Record<string, string> = { kw: "text-accent-ink", str: "text-ok/90", com: "italic text-faint", num: "text-warn", key: "text-info", fn: "text-ink" };
 const MAX_LINES = 3000; // larger files stay readable and the page stays responsive; the full file is in the download
 
-export function Code({ text, label, lineNumbers = false, path, marks }: {
-  text: string; label?: string; lineNumbers?: boolean; path?: string; marks?: Set<number>;
+/**
+ * Source view. Optional `focus` (1-based, inclusive; needs lineNumbers) highlights a line range and scrolls it into
+ * view once the text is shown; without it the component behaves exactly as before.
+ */
+export function Code({ text, label, lineNumbers = false, path, marks, focus }: {
+  text: string; label?: string; lineNumbers?: boolean; path?: string; marks?: Set<number>; focus?: { start: number; end?: number };
 }) {
   const t = useT();
+  const ref = useRef<HTMLPreElement>(null);
   const all = text.replace(/\n$/, "").split("\n");
   const lines = all.slice(0, MAX_LINES);
   const lang = path ? langOf(path) : "text";
+  const fStart = focus?.start ?? 0, fEnd = Math.max(focus?.end ?? fStart, fStart);
+  const focused = (n: number) => fStart > 0 && n >= fStart && n <= fEnd;
+  useEffect(() => {
+    if (!lineNumbers || !fStart) return;
+    const el = ref.current?.querySelector<HTMLElement>(`[data-line="${fStart}"]`);
+    // scroll only the nearest scrolling box around the code (never the whole page)
+    let box: HTMLElement | null = ref.current;
+    while (box && !(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+    if (el && box && box !== document.documentElement && box !== document.body)
+      box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3;
+  }, [lineNumbers, fStart, fEnd, text]);
   return (
-    <pre aria-label={label} className="overflow-auto font-mono text-[12.5px] leading-[1.65] text-ink/90">
+    <pre ref={ref} aria-label={label} className="overflow-auto font-mono text-[12.5px] leading-[1.65] text-ink/90">
       {lineNumbers ? lines.map((l, i) => (
-        <div key={i} className={`flex ${marks?.has(i + 1) ? "bg-bad/10" : ""}`} data-line={i + 1}>
-          <span className={`w-10 shrink-0 select-none pr-3 text-right ${marks?.has(i + 1) ? "text-bad" : "text-faint"}`}>{i + 1}</span>
+        <div key={i} className={`flex ${marks?.has(i + 1) ? "bg-bad/10" : focused(i + 1) ? "bg-accent/12" : ""}`} data-line={i + 1}
+          {...(focused(i + 1) ? { "data-focus": "" } : {})}>
+          <span className={`w-10 shrink-0 select-none pr-3 text-right ${marks?.has(i + 1) ? "text-bad" : focused(i + 1) ? "text-accent-ink" : "text-faint"}`}>{i + 1}</span>
           <span className="whitespace-pre">{l ? highlightLine(l, lang).map((tk, k) => <span key={k} className={tk.kind ? TOKEN[tk.kind] : undefined}>{tk.text}</span>) : " "}</span>
         </div>
       )) : text}

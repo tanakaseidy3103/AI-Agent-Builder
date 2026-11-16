@@ -9,7 +9,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.skip(!process.env.RUN_REAL_GENERATION, "set RUN_REAL_GENERATION=1 to run real, multi-minute generations");
 test.describe.configure({ mode: "serial" });
-test.setTimeout(20 * 60_000);
+test.setTimeout(45 * 60_000); // 4 real generations; ~4-6 min each on a CPU-only laptop (9 tokens/s measured)
 
 const OUTCOME = /is verified|is validated but not verified|failed validation/;
 const CASES = [

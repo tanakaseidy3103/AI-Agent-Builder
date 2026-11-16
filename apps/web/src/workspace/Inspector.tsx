@@ -1,17 +1,22 @@
 /** Right panel: the generated Skill. Every value comes from GET /studio/versions/{id} and its stored report. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { API, api, type InstallInfo, type Integration, type Report, type VersionDetail } from "../api";
+import { lazy, Suspense, useMemo, useState } from "react";
+import { DEMO, api, type InstallInfo, type Integration, type Report, type VersionDetail } from "../api";
+import { DownloadZip } from "./DownloadZip";
 import { useT, type Key } from "../i18n";
 import { Alert, Check, Cube, Download, FileI, Folder } from "./icons";
 import { Button, Code, CopyButton, CopyField, Empty, ErrorNote, Pill, StatusPill, StepMark, Tabs, sectionTitle } from "./kit";
 import { ProjectInstall } from "./ProjectInstall";
+// the Skill Flow tab (diagram, parser, details) is loaded only when opened
+const SkillFlow = lazy(() => import("./flow/SkillFlow").then((m) => ({ default: m.SkillFlow })));
+import { fileQuery } from "./hooks";
+import type { FileTarget } from "../route";
 
 type Tab = (typeof TABS)[number];
 
-export const TABS = ["files", "manifest", "tests", "validation", "repairs", "export"] as const;
+export const TABS = ["files", "flow", "manifest", "tests", "validation", "repairs", "export"] as const;
 
-export function Inspector({ id, onSelect, tab: initialTab }: { id: string | null; onSelect: (id: string) => void; tab?: string }) {
+export function Inspector({ id, onSelect, tab: initialTab, file }: { id: string | null; onSelect: (id: string) => void; tab?: string; file?: FileTarget }) {
   const t = useT();
   const q = useQuery({ queryKey: ["version", id], queryFn: () => api<VersionDetail>(`/studio/versions/${id}`), enabled: !!id });
   const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(initialTab ?? "") ? (initialTab as Tab) : "files");
@@ -38,6 +43,7 @@ export function Inspector({ id, onSelect, tab: initialTab }: { id: string | null
       </header>
       <Tabs label={t("insp.tabs")} value={tab} onChange={setTab} items={[
         { id: "files", label: t("tab.files"), count: v.files.length },
+        { id: "flow", label: t("tab.flow") },
         { id: "manifest", label: t("tab.manifest") },
         { id: "tests", label: t("insp.tests"), count: r ? r.tests.length + (r.evals?.length ?? 0) : 0 },
         { id: "validation", label: t("tab.validation") },
@@ -45,7 +51,8 @@ export function Inspector({ id, onSelect, tab: initialTab }: { id: string | null
         { id: "export", label: t("tab.export") },
       ]} />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "files" && <Files v={v} />}
+        {tab === "files" && <Files v={v} target={file} />}
+        {tab === "flow" && <Suspense fallback={<p role="status" className="p-4 text-sm text-mute">{t("sf.loading")}</p>}><SkillFlow v={v} /></Suspense>}
         {tab === "manifest" && <Manifest v={v} />}
         {tab === "tests" && <Tests r={r} />}
         {tab === "validation" && <Validation v={v} />}
@@ -61,7 +68,8 @@ export function EvidenceLadder({ v }: { v: VersionDetail }) {
   const t = useT();
   const r = v.validation?.report;
   const steps: [Key, boolean][] = [
-    ["ev.generated", true],
+    // a human-written reference Skill was not generated: same wording as the lists (Ladder)
+    [v.manifest.origin === "reference" ? "ev.example" : "ev.generated", true],
     ["ev.validated", v.status !== "validation_failed"],
     ["ev.tested", r?.sandbox.status === "ran"],
     ["ev.verified", v.status === "verified"],
@@ -80,18 +88,30 @@ export function EvidenceLadder({ v }: { v: VersionDetail }) {
   );
 }
 
-function Files({ v }: { v: VersionDetail }) {
+/** What a file in a Skill package is for, from its path alone (the package layout is fixed by the backend packager). */
+export function aboutFile(path: string): Key {
+  if (path === "SKILL.md") return "files.about.skill";
+  if (path === "manifest.json") return "files.about.manifest";
+  if (path.startsWith("tests/") || /(^|\/)test_[^/]*\.py$/.test(path)) return "files.about.test";
+  if (path.startsWith("evals/")) return "files.about.eval";
+  if (path.startsWith("scripts/") || path.endsWith(".py")) return "files.about.script";
+  return "files.about.other";
+}
+
+function Files({ v, target }: { v: VersionDetail; target?: FileTarget }) {
   const t = useT();
-  const [path, setPath] = useState(v.files.find((f) => f.path === "scripts/main.py")?.path ?? "SKILL.md");
-  const fileQuery = (p: string) => ({ queryKey: ["file", v.id, p], queryFn: () => api<string>(`/studio/versions/${v.id}/files/${p}`) });
-  const q = useQuery(fileQuery(path));
+  // a deep link (#/code/<id>/files/<path>/<lines>) opens that file at those lines; otherwise the entrypoint
+  const linked = target && v.files.some((f) => f.path === target.path) ? target : undefined;
+  const [path, setPath] = useState(linked?.path ?? v.files.find((f) => f.path === "scripts/main.py")?.path ?? "SKILL.md");
+  const q = useQuery(fileQuery(v.id, path));
+  const focus = linked?.start && path === linked.path ? { start: linked.start, end: linked.end } : undefined;
   const qc = useQueryClient();
   const copyable = v.status !== "validation_failed"; // same rule as export: a failed Skill is never handed out
   // failed static checks about this file (check ids are "<check>:<path>"), and the lines they name
   const fileChecks = (v.validation?.report.static.checks ?? []).filter((c) => c.status === "fail" && c.id.endsWith(`:${path}`));
   const marks = new Set(fileChecks.flatMap((c) => [...c.message.matchAll(/\bline (\d+)/g)].map((m) => Number(m[1]))));
   // every file with its destination inside the tool's Skills folder; fetched only on click, cached afterwards
-  const copyAll = async () => (await Promise.all(v.files.map(async (f) => `# ${v.slug}/${f.path}\n${await qc.fetchQuery(fileQuery(f.path))}`))).join("\n\n");
+  const copyAll = async () => (await Promise.all(v.files.map(async (f) => `# ${v.slug}/${f.path}\n${await qc.fetchQuery(fileQuery(v.id, f.path))}`))).join("\n\n");
   const tree = useMemo(() => {
     const groups = new Map<string, typeof v.files>();
     for (const f of v.files) {
@@ -134,6 +154,7 @@ function Files({ v }: { v: VersionDetail }) {
             <CopyButton label={t("files.copyAll")} getText={copyAll} disabled={!copyable} title={copyable ? undefined : t("export.blocked")} />
           </span>
         </div>
+        <p className="border-b border-line bg-panel px-3 py-1.5 text-[12px] text-mute" data-testid="file-about">{t(aboutFile(path))}</p>
         <div className="max-h-[60vh] overflow-auto bg-canvas px-1 py-2">
           {fileChecks.length > 0 && (
             <ul className="mx-2 mb-2 space-y-1.5 rounded-md border border-bad/25 bg-bad/[0.06] px-3 py-2 font-sans text-[12.5px]" aria-label={t("files.checks")}>
@@ -145,7 +166,7 @@ function Files({ v }: { v: VersionDetail }) {
               ))}
             </ul>
           )}
-          {q.error ? <ErrorNote error={q.error} /> : <Code label={t("files.preview")} text={q.data ?? t("skills.loading")} lineNumbers path={path} marks={marks} />}
+          {q.error ? <ErrorNote error={q.error} /> : <Code label={t("files.preview")} text={q.data ?? t("skills.loading")} lineNumbers path={path} marks={marks} focus={q.data ? focus : undefined} />}
         </div>
       </div>
     </div>
@@ -236,7 +257,8 @@ function Validation({ v }: { v: VersionDetail }) {
   const failed = r?.static.checks.filter((c) => c.status === "fail") ?? [];
   const sandboxNote = !r ? "" : r.sandbox.status === "ran"
     ? t("val.sandboxRan", { ms: r.sandbox.duration_ms ?? 0, mb: r.sandbox.limits?.memory_mb ?? "?" })
-    : r.sandbox.error ?? (v.kind === "instructions" ? t("val.sandboxSkippedInstr") : t("val.sandboxSkippedStatic"));
+    : r.sandbox.error ? `${r.sandbox.kind ? `${t(`val.kind.${r.sandbox.kind}` as Key)}: ` : ""}${r.sandbox.error}`
+    : v.kind === "instructions" ? t("val.sandboxSkippedInstr") : t("val.sandboxSkippedStatic");
   return (
     <div className="space-y-4 p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -328,7 +350,8 @@ function Export({ v }: { v: VersionDetail }) {
   const [target, setTarget] = useState("claude-code");
   const [confirmReplace, setConfirmReplace] = useState(false);
   const exportable = v.status === "validated" || v.status === "verified";
-  const info = useQuery({ queryKey: ["install", v.id, target], queryFn: () => api<InstallInfo>(`/studio/versions/${v.id}/install/${target}`), enabled: exportable });
+  // the public demo offers the ZIP only: no install commands, no publishing, no install into a folder of the host
+  const info = useQuery({ queryKey: ["install", v.id, target], queryFn: () => api<InstallInfo>(`/studio/versions/${v.id}/install/${target}`), enabled: exportable && !DEMO });
   if (!exportable) return <div className="p-4"><ErrorNote error={t("export.blocked")} /></div>;
   return (
     <div className="space-y-3 p-4">
@@ -339,11 +362,19 @@ function Export({ v }: { v: VersionDetail }) {
           className="h-8 rounded-md border border-line bg-raised px-2 text-sm text-ink focus:border-accent/60 focus:outline-none">
           {targets.data?.filter((x) => x.id === "canonical" || v.manifest.compatibility.includes(x.id)).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
         </select>
-        <a href={`${API}/studio/versions/${v.id}/export/${target}`} download={info.data?.zip}
+        <DownloadZip path={`/studio/versions/${v.id}/export/${target}`} filename={info.data?.zip}
           className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-sm font-medium text-white hover:bg-accent/90">
           <Download size={14} />{t("export.download")}
-        </a>
+        </DownloadZip>
       </div>
+      <p className="rounded-md border border-warn/25 bg-warn/8 px-3 py-2 text-xs text-ink/90">{t(v.manifest.origin === "reference" ? "export.referenceNote" : "demo.exportNote")}</p>
+      <section aria-label={t("zip.title")} className="rounded-md border border-line px-3 py-2.5">
+        <h3 className={`${sectionTitle} mb-1`}>{t("zip.title")}</h3>
+        <ul className="list-disc space-y-0.5 pl-5 text-xs text-mute">
+          {(["zip.skill", "zip.scripts", "zip.tests", "zip.manifest"] as Key[]).map((k) => <li key={k}>{t(k)}</li>)}
+        </ul>
+        <p className="mt-1.5 text-xs text-ink/90">{t("zip.use")}</p>
+      </section>
       {info.error && <ErrorNote error={info.error} />}
       {info.data && (
         <>
@@ -366,13 +397,16 @@ function Export({ v }: { v: VersionDetail }) {
         </>
       )}
 
-      <section aria-label={t("gh.title")} className="space-y-2 border-t border-line pt-4">
-        <h3 className={sectionTitle}>{t("gh.title")}</h3>
-        <p className="text-xs leading-relaxed text-mute">{t("gh.body", { zip: info.data?.zip ?? "" })}</p>
-        <CopyField label="bash / PowerShell" text={`cd ${v.slug}\ngit init -b main\ngit add .\ngit commit -m "Add ${v.slug} ${v.version}"\ngh repo create ${v.slug} --private --source . --push`} />
-      </section>
-
-      <div className="border-t border-line pt-4"><ProjectInstall v={v} /></div>
+      {!DEMO && (
+        <>
+          <section aria-label={t("gh.title")} className="space-y-2 border-t border-line pt-4">
+            <h3 className={sectionTitle}>{t("gh.title")}</h3>
+            <p className="text-xs leading-relaxed text-mute">{t("gh.body", { zip: info.data?.zip ?? "" })}</p>
+            <CopyField label="bash / PowerShell" text={`cd ${v.slug}\ngit init -b main\ngit add .\ngit commit -m "Add ${v.slug} ${v.version}"\ngh repo create ${v.slug} --private --source . --push`} />
+          </section>
+          <div className="border-t border-line pt-4"><ProjectInstall v={v} /></div>
+        </>
+      )}
     </div>
   );
 }

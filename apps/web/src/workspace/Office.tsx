@@ -1,7 +1,7 @@
 /** Agent Office: five roles of the real, sequential pipeline. Every state and motion comes from job stages + persisted events. */
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type CSSProperties } from "react";
-import { api, type AgentEvent, type AgentId, type Job } from "../api";
+import { api, parseTime, type AgentEvent, type AgentId, type Job } from "../api";
 import { useT, type Key } from "../i18n";
 import { Check, CodeI, Cross, Cube, Flask, Shield, Spark } from "./icons";
 import { Pill, StatusPill, StepMark } from "./kit";
@@ -34,7 +34,7 @@ export function useElapsed(iso: string | undefined, active: boolean) {
     const h = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(h);
   }, [active]);
-  return iso ? Math.max(0, Math.round((now - Date.parse(iso)) / 1000)) : null;
+  return iso ? Math.max(0, Math.round((now - parseTime(iso)) / 1000)) : null;
 }
 
 export const fmtSecs = (s: number) => (s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`);
@@ -108,7 +108,7 @@ export function OfficeStage({ job, selected, onSelect, awaitingApproval = false 
           <span key={ts.length} aria-hidden="true" className="handoff-comet absolute top-[20px] h-[5px] w-[5px] rounded-full bg-accent-ink"
             style={{ "--from": center(ROLE_ORDER.indexOf(prev.role)), "--to": center(ROLE_ORDER.indexOf(cur.role)) } as CSSProperties} />
         )}
-        {views.map((v) => <Station key={v.id} v={v} selected={selected === v.id} onSelect={onSelect} elapsed={v === working ? elapsed : null} />)}
+        {views.map((v) => <Station key={v.id} v={v} selected={selected === v.id} onSelect={job ? onSelect : undefined} elapsed={v === working ? elapsed : null} />)}
       </ol>
 
       {repairs > 0 && lastRepair?.reason && (
@@ -141,17 +141,23 @@ export function OfficeStage({ job, selected, onSelect, awaitingApproval = false 
   );
 }
 
-function Station({ v, selected, onSelect, elapsed }: { v: AgentView; selected: boolean; onSelect: (r: AgentId) => void; elapsed: number | null }) {
+function Station({ v, selected, onSelect, elapsed }: { v: AgentView; selected: boolean; onSelect?: (r: AgentId) => void; elapsed: number | null }) {
   const t = useT();
   const role = t(`role.${v.id}` as Key);
   const last = v.last && v.last.kind !== "started" ? v.last : undefined;
+  const label = `${role}: ${t(`agent.${v.state}` as Key)}`;
   return (
     <li data-testid={`role-${v.id}`} data-state={v.state} className="relative z-[1] flex min-w-0 flex-col items-center px-0.5 text-center">
-      <button type="button" onClick={() => onSelect(v.id)} aria-pressed={selected}
-        aria-label={`${role}: ${t(`agent.${v.state}` as Key)}`}
-        className={`rounded-full p-1 transition-colors ${selected ? "bg-hover ring-1 ring-line-strong" : "hover:bg-hover/70"}`}>
-        <AgentBadge role={v.id} state={v.state} />
-      </button>
+      {/* before any request there is no agent activity to show: a plain badge, not a button that does nothing
+          (2026-11 audit: the five stations were clickable with hover styles but had no effect) */}
+      {onSelect ? (
+        <button type="button" onClick={() => onSelect(v.id)} aria-pressed={selected} aria-label={label}
+          className={`rounded-full p-1 transition-colors ${selected ? "bg-hover ring-1 ring-line-strong" : "hover:bg-hover/70"}`}>
+          <AgentBadge role={v.id} state={v.state} />
+        </button>
+      ) : (
+        <span role="img" aria-label={label} className="rounded-full p-1"><AgentBadge role={v.id} state={v.state} /></span>
+      )}
       <p className="mt-1 truncate text-[12.5px] font-medium text-ink">{role}</p>
       <p className={`flex items-center gap-1 text-[11px] ${STATE_TEXT[v.state]}`}>
         {v.state === "working" && <Bars />}{t(`agent.${v.state}` as Key)}
@@ -181,7 +187,7 @@ function StepLine({ s, running }: { s: Step; running?: boolean }) {
         <span className="text-ink/90">{s.kind === "completed" ? s.detail : taskOf(t, s.stage, s.label)}</span>
         {s.kind !== "completed" && (running ? s.label : s.detail) && <span className="text-mute"> — {running ? s.label : s.detail}</span>}
       </span>
-      <time className="shrink-0 tabular-nums text-faint" dateTime={s.ev.at}>{new Date(s.ev.at).toLocaleTimeString()}</time>
+      <time className="shrink-0 tabular-nums text-faint" dateTime={s.ev.at}>{new Date(parseTime(s.ev.at)).toLocaleTimeString()}</time>
     </li>
   );
 }

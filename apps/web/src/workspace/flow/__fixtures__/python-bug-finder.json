@@ -1,0 +1,490 @@
+{
+ "_source": "GET /studio/versions/f4938e3bd42347e391f6e3292a3db0e1 and its files from the local API on 2026-11-14 (real stored Skill)",
+ "version": {
+  "id": "f4938e3bd42347e391f6e3292a3db0e1",
+  "skill_id": "f580c92607bb440f868b53cab72575db",
+  "slug": "python-bug-finder",
+  "version": "0.2.0",
+  "kind": "code",
+  "status": "verified",
+  "file_count": 8,
+  "created_at": "2026-11-14T05:33:22.301684",
+  "manifest": {
+   "format_version": "1",
+   "id": "python-bug-finder",
+   "name": "Python Bug Finder",
+   "description": "Analyzes Python source files, identifies potential bugs and suggests improvements. Use when reviewing Python code for common defects.",
+   "version": "0.2.0",
+   "kind": "code",
+   "tools": [
+    "Read",
+    "Bash"
+   ],
+   "dependencies": [],
+   "permissions": [
+    "compute",
+    "read-input-files"
+   ],
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "files": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "string"
+      }
+     }
+    },
+    "required": [
+     "files"
+    ]
+   },
+   "output_schema": {
+    "type": "object",
+    "properties": {
+     "findings": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "file": {
+         "type": "string"
+        },
+        "line": {
+         "type": "integer"
+        },
+        "rule": {
+         "type": "string"
+        },
+        "message": {
+         "type": "string"
+        },
+        "suggestion": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "file",
+        "line",
+        "rule",
+        "message",
+        "suggestion"
+       ]
+      }
+     },
+     "count": {
+      "type": "integer"
+     },
+     "parse_errors": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    },
+    "required": [
+     "findings",
+     "count",
+     "parse_errors"
+    ]
+   },
+   "execution": {
+    "runtime": "python3.12",
+    "entrypoint": "scripts/main.py",
+    "timeout_seconds": 10,
+    "memory_mb": 256
+   },
+   "tests": {
+    "framework": "unittest",
+    "path": "tests"
+   },
+   "compatibility": [
+    "claude-code",
+    "codex",
+    "cursor"
+   ],
+   "origin": "generated"
+  },
+  "files": [
+   {
+    "path": "docs/usage.md",
+    "size": 291
+   },
+   {
+    "path": "evals/cases.json",
+    "size": 980
+   },
+   {
+    "path": "manifest.json",
+    "size": 1901
+   },
+   {
+    "path": "README.md",
+    "size": 994
+   },
+   {
+    "path": "scripts/cli.py",
+    "size": 1329
+   },
+   {
+    "path": "scripts/main.py",
+    "size": 2519
+   },
+   {
+    "path": "SKILL.md",
+    "size": 816
+   },
+   {
+    "path": "tests/test_main.py",
+    "size": 1316
+   }
+  ],
+  "validation": {
+   "id": "0ecab9d715ba42cfb387583b42e5f5ef",
+   "status": "verified",
+   "report": {
+    "model": "fake:scripted (MOCKED LLM)",
+    "static": {
+     "passed": 22,
+     "failed": 0,
+     "warnings": 0,
+     "checks": [
+      {
+       "id": "structure.paths",
+       "status": "pass",
+       "message": "8 files, all paths safe",
+       "hint": null
+      },
+      {
+       "id": "structure.required",
+       "status": "pass",
+       "message": "SKILL.md and manifest.json present",
+       "hint": null
+      },
+      {
+       "id": "manifest.schema",
+       "status": "pass",
+       "message": "python-bug-finder@0.2.0 (code)",
+       "hint": null
+      },
+      {
+       "id": "skill_md.safety",
+       "status": "pass",
+       "message": "no dangerous commands or instruction overrides in the Markdown files",
+       "hint": null
+      },
+      {
+       "id": "package.secrets",
+       "status": "pass",
+       "message": "no hard-coded credentials",
+       "hint": null
+      },
+      {
+       "id": "skill_md.frontmatter",
+       "status": "pass",
+       "message": "name and description present",
+       "hint": null
+      },
+      {
+       "id": "manifest.io_schemas",
+       "status": "pass",
+       "message": "input/output schemas are objects",
+       "hint": null
+      },
+      {
+       "id": "manifest.permissions",
+       "status": "pass",
+       "message": "['compute', 'read-input-files']",
+       "hint": null
+      },
+      {
+       "id": "manifest.dependencies",
+       "status": "pass",
+       "message": "no external dependencies",
+       "hint": null
+      },
+      {
+       "id": "manifest.compatibility",
+       "status": "pass",
+       "message": "['claude-code', 'codex', 'cursor']",
+       "hint": null
+      },
+      {
+       "id": "python.syntax:scripts/cli.py",
+       "status": "pass",
+       "message": "parses",
+       "hint": null
+      },
+      {
+       "id": "python.syntax:scripts/main.py",
+       "status": "pass",
+       "message": "parses",
+       "hint": null
+      },
+      {
+       "id": "python.syntax:tests/test_main.py",
+       "status": "pass",
+       "message": "parses",
+       "hint": null
+      },
+      {
+       "id": "python.policy:scripts/cli.py",
+       "status": "pass",
+       "message": "stdlib only, no forbidden calls",
+       "hint": null
+      },
+      {
+       "id": "python.api:scripts/cli.py",
+       "status": "pass",
+       "message": "every referenced stdlib attribute exists",
+       "hint": null
+      },
+      {
+       "id": "python.policy:scripts/main.py",
+       "status": "pass",
+       "message": "stdlib only, no forbidden calls",
+       "hint": null
+      },
+      {
+       "id": "python.api:scripts/main.py",
+       "status": "pass",
+       "message": "every referenced stdlib attribute exists",
+       "hint": null
+      },
+      {
+       "id": "python.policy:tests/test_main.py",
+       "status": "pass",
+       "message": "stdlib only, no forbidden calls",
+       "hint": null
+      },
+      {
+       "id": "python.api:tests/test_main.py",
+       "status": "pass",
+       "message": "every referenced stdlib attribute exists",
+       "hint": null
+      },
+      {
+       "id": "code.entrypoint",
+       "status": "pass",
+       "message": "scripts/main.py defines run(data)",
+       "hint": null
+      },
+      {
+       "id": "code.tests",
+       "status": "pass",
+       "message": "5 test methods with assertions",
+       "hint": null
+      },
+      {
+       "id": "code.evals",
+       "status": "pass",
+       "message": "3 eval cases",
+       "hint": null
+      }
+     ]
+    },
+    "tests": [
+     {
+      "name": "test_main.TestPythonBugFinder.test_bare_except_is_reported_with_line_and_suggestion",
+      "status": "pass",
+      "detail": ""
+     },
+     {
+      "name": "test_main.TestPythonBugFinder.test_clean_file_has_no_findings",
+      "status": "pass",
+      "detail": ""
+     },
+     {
+      "name": "test_main.TestPythonBugFinder.test_mutable_default_and_none_comparison",
+      "status": "pass",
+      "detail": ""
+     },
+     {
+      "name": "test_main.TestPythonBugFinder.test_non_python_files_are_ignored",
+      "status": "pass",
+      "detail": ""
+     },
+     {
+      "name": "test_main.TestPythonBugFinder.test_syntax_error_is_reported_not_raised",
+      "status": "pass",
+      "detail": ""
+     }
+    ],
+    "evals": [
+     {
+      "name": "bare-except",
+      "input": {
+       "files": {
+        "app.py": "try:\n    run()\nexcept:\n    pass\n"
+       }
+      },
+      "expected": {
+       "contains": {
+        "count": 1,
+        "findings": [
+         {
+          "file": "app.py",
+          "line": 3,
+          "rule": "bare-except"
+         }
+        ]
+       }
+      },
+      "actual": {
+       "findings": [
+        {
+         "file": "app.py",
+         "line": 3,
+         "rule": "bare-except",
+         "message": "bare `except:` also catches KeyboardInterrupt and SystemExit",
+         "suggestion": "catch the specific exception, e.g. `except ValueError:`"
+        }
+       ],
+       "count": 1,
+       "parse_errors": []
+      },
+      "status": "pass",
+      "reasons": [],
+      "duration_ms": 0,
+      "stdout": "",
+      "trace": null,
+      "holdout": false
+     },
+     {
+      "name": "clean",
+      "input": {
+       "files": {
+        "ok.py": "def add(a, b):\n    return a + b\n"
+       }
+      },
+      "expected": {
+       "contains": {
+        "count": 0,
+        "parse_errors": []
+       }
+      },
+      "actual": {
+       "findings": [],
+       "count": 0,
+       "parse_errors": []
+      },
+      "status": "pass",
+      "reasons": [],
+      "duration_ms": 0,
+      "stdout": "",
+      "trace": null,
+      "holdout": false
+     },
+     {
+      "name": "unreachable-after-return",
+      "input": {
+       "files": {
+        "m.py": "def f():\n    return 1\n    print('never')\n"
+       }
+      },
+      "expected": {
+       "contains": {
+        "count": 1,
+        "findings": [
+         {
+          "file": "m.py",
+          "line": 3,
+          "rule": "unreachable-code"
+         }
+        ]
+       }
+      },
+      "actual": {
+       "findings": [
+        {
+         "file": "m.py",
+         "line": 3,
+         "rule": "unreachable-code",
+         "message": "statement after return/raise never runs",
+         "suggestion": "remove it or move it before the return"
+        }
+       ],
+       "count": 1,
+       "parse_errors": []
+      },
+      "status": "pass",
+      "reasons": [],
+      "duration_ms": 0,
+      "stdout": "",
+      "trace": null,
+      "holdout": true
+     }
+    ],
+    "sandbox": {
+     "status": "ran",
+     "error": null,
+     "duration_ms": 2265,
+     "limits": {
+      "network": "none",
+      "memory_mb": 256,
+      "timeout_s": 10
+     }
+    },
+    "criteria": [
+     {
+      "id": "static",
+      "passed": true,
+      "detail": "22 passed, 0 failed"
+     },
+     {
+      "id": "unit_tests",
+      "passed": true,
+      "detail": "5/5 passed (need ≥3, all passing)"
+     },
+     {
+      "id": "eval_cases",
+      "passed": true,
+      "detail": "3/3 passed (schema, determinism, expectations)"
+     }
+    ],
+    "summary": {
+     "tests_total": 5,
+     "tests_passed": 5,
+     "evals_total": 3,
+     "evals_passed": 3
+    },
+    "duration_ms": 2280,
+    "status": "verified",
+    "failure_category": "none"
+   },
+   "created_at": "2026-11-14T05:33:40.213759"
+  },
+  "versions": [
+   {
+    "id": "8c420be656f64e58a6b9ab4b51e78996",
+    "skill_id": "f580c92607bb440f868b53cab72575db",
+    "slug": "python-bug-finder",
+    "version": "0.1.0",
+    "kind": "code",
+    "status": "verified",
+    "file_count": 8,
+    "created_at": "2026-11-14T02:22:18.109443"
+   },
+   {
+    "id": "f4938e3bd42347e391f6e3292a3db0e1",
+    "skill_id": "f580c92607bb440f868b53cab72575db",
+    "slug": "python-bug-finder",
+    "version": "0.2.0",
+    "kind": "code",
+    "status": "verified",
+    "file_count": 8,
+    "created_at": "2026-11-14T05:33:22.301684"
+   }
+  ]
+ },
+ "files": {
+  "docs/usage.md": "# Usage\n\nCall run(data) with input matching manifest.json input_schema.\n\n## Input schema\n\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"files\": {\n      \"type\": \"object\",\n      \"additionalProperties\": {\n        \"type\": \"string\"\n      }\n    }\n  },\n  \"required\": [\n    \"files\"\n  ]\n}\n```\n",
+  "evals/cases.json": "[\n  {\n    \"name\": \"bare-except\",\n    \"input\": {\n      \"files\": {\n        \"app.py\": \"try:\\n    run()\\nexcept:\\n    pass\\n\"\n      }\n    },\n    \"expect\": {\n      \"contains\": {\n        \"count\": 1,\n        \"findings\": [\n          {\n            \"file\": \"app.py\",\n            \"line\": 3,\n            \"rule\": \"bare-except\"\n          }\n        ]\n      }\n    }\n  },\n  {\n    \"name\": \"clean\",\n    \"input\": {\n      \"files\": {\n        \"ok.py\": \"def add(a, b):\\n    return a + b\\n\"\n      }\n    },\n    \"expect\": {\n      \"contains\": {\n        \"count\": 0,\n        \"parse_errors\": []\n      }\n    }\n  },\n  {\n    \"name\": \"unreachable-after-return\",\n    \"input\": {\n      \"files\": {\n        \"m.py\": \"def f():\\n    return 1\\n    print('never')\\n\"\n      }\n    },\n    \"expect\": {\n      \"contains\": {\n        \"count\": 1,\n        \"findings\": [\n          {\n            \"file\": \"m.py\",\n            \"line\": 3,\n            \"rule\": \"unreachable-code\"\n          }\n        ]\n      }\n    },\n    \"holdout\": true\n  }\n]\n",
+  "manifest.json": "{\n  \"format_version\": \"1\",\n  \"id\": \"python-bug-finder\",\n  \"name\": \"Python Bug Finder\",\n  \"description\": \"Analyzes Python source files, identifies potential bugs and suggests improvements. Use when reviewing Python code for common defects.\",\n  \"version\": \"0.2.0\",\n  \"kind\": \"code\",\n  \"tools\": [\n    \"Read\",\n    \"Bash\"\n  ],\n  \"dependencies\": [],\n  \"permissions\": [\n    \"compute\",\n    \"read-input-files\"\n  ],\n  \"input_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"files\": {\n        \"type\": \"object\",\n        \"additionalProperties\": {\n          \"type\": \"string\"\n        }\n      }\n    },\n    \"required\": [\n      \"files\"\n    ]\n  },\n  \"output_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"findings\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"file\": {\n              \"type\": \"string\"\n            },\n            \"line\": {\n              \"type\": \"integer\"\n            },\n            \"rule\": {\n              \"type\": \"string\"\n            },\n            \"message\": {\n              \"type\": \"string\"\n            },\n            \"suggestion\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"file\",\n            \"line\",\n            \"rule\",\n            \"message\",\n            \"suggestion\"\n          ]\n        }\n      },\n      \"count\": {\n        \"type\": \"integer\"\n      },\n      \"parse_errors\": {\n        \"type\": \"array\",\n        \"items\": {\n          \"type\": \"string\"\n        }\n      }\n    },\n    \"required\": [\n      \"findings\",\n      \"count\",\n      \"parse_errors\"\n    ]\n  },\n  \"execution\": {\n    \"runtime\": \"python3.12\",\n    \"entrypoint\": \"scripts/main.py\",\n    \"timeout_seconds\": 10,\n    \"memory_mb\": 256\n  },\n  \"tests\": {\n    \"framework\": \"unittest\",\n    \"path\": \"tests\"\n  },\n  \"compatibility\": [\n    \"claude-code\",\n    \"codex\",\n    \"cursor\"\n  ],\n  \"origin\": \"generated\"\n}\n",
+  "README.md": "# Python Bug Finder\n\nAnalyzes Python source files, identifies potential bugs and suggests improvements. Use when reviewing Python code for common defects.\n\nVersion 0.2.0 · kind `code` · origin `generated` · generated by AI Agent Builder.\nCheck the Studio's validation report for its status (validated / verified) before relying on it.\n\n## Install\n\nCopy this folder into your agent's skills directory, for example `~/.claude/skills/` (Claude Code) or `~/.agents/skills/` (Codex). The agent reads `SKILL.md`.\n\n## Run it yourself\n\nPython 3.12, standard library only, no network:\n\n```bash\npython scripts/cli.py input.json      # prints the JSON result\npython scripts/cli.py --dir ./my-project   # reads source files from a folder\n```\n\nExample `input.json`:\n\n```json\n{\n  \"files\": {\n    \"app.py\": \"try:\\n    run()\\nexcept:\\n    pass\\n\"\n  }\n}\n```\n\nInput and output contracts: `manifest.json` (`input_schema`, `output_schema`). Tests: `python -m unittest` from `tests/` with `scripts/` on the path.\n",
+  "scripts/cli.py": "\"\"\"Local runner: python scripts/cli.py [input.json] | --dir PATH\nReads JSON input (file or stdin), or builds {\"files\": {...}} from a directory, calls run(), prints JSON.\"\"\"\nimport json\nimport os\nimport sys\n\nsys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\nfrom main import run  # noqa: E402\n\nTEXT_EXT = {\".js\", \".jsx\", \".ts\", \".tsx\", \".py\", \".json\", \".md\", \".css\", \".html\", \".txt\", \".csv\"}\nSKIP_DIRS = {\"node_modules\", \".git\", \"dist\", \"build\", \".next\", \"__pycache__\", \".venv\"}\n\n\ndef collect(root):\n    files = {}\n    for d, dirs, names in os.walk(root):\n        dirs[:] = [x for x in dirs if x not in SKIP_DIRS]\n        for n in names:\n            p = os.path.join(d, n)\n            if os.path.splitext(n)[1] in TEXT_EXT and os.path.getsize(p) <= 200_000 and len(files) < 500:\n                with open(p, encoding=\"utf-8\", errors=\"replace\") as f:\n                    files[os.path.relpath(p, root).replace(os.sep, \"/\")] = f.read()\n    return {\"files\": files}\n\n\ndef main(argv):\n    if len(argv) >= 2 and argv[0] == \"--dir\":\n        data = collect(argv[1])\n    elif argv:\n        with open(argv[0], encoding=\"utf-8\") as f:\n            data = json.load(f)\n    else:\n        data = json.load(sys.stdin)\n    print(json.dumps(run(data), indent=2, ensure_ascii=False))\n\n\nif __name__ == \"__main__\":\n    main(sys.argv[1:])\n",
+  "scripts/main.py": "import ast\n\nRULES = {\n    \"bare-except\": (\"bare `except:` also catches KeyboardInterrupt and SystemExit\",\n                    \"catch the specific exception, e.g. `except ValueError:`\"),\n    \"mutable-default\": (\"mutable default argument is shared between calls\",\n                        \"use `None` as the default and create the list/dict inside the function\"),\n    \"none-comparison\": (\"comparison to None with == or !=\",\n                        \"use `is None` / `is not None`\"),\n    \"unreachable-code\": (\"statement after return/raise never runs\",\n                         \"remove it or move it before the return\"),\n}\n\n\ndef _finding(path, node, rule):\n    message, suggestion = RULES[rule]\n    return {\"file\": path, \"line\": getattr(node, \"lineno\", 1), \"rule\": rule, \"message\": message, \"suggestion\": suggestion}\n\n\ndef _check(path, tree):\n    out = []\n    for node in ast.walk(tree):\n        if isinstance(node, ast.ExceptHandler) and node.type is None:\n            out.append(_finding(path, node, \"bare-except\"))\n        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):\n            for default in node.args.defaults + [d for d in node.args.kw_defaults if d is not None]:\n                if isinstance(default, (ast.List, ast.Dict, ast.Set)):\n                    out.append(_finding(path, default, \"mutable-default\"))\n        elif isinstance(node, ast.Compare):\n            for op, right in zip(node.ops, node.comparators):\n                if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(right, ast.Constant) and right.value is None:\n                    out.append(_finding(path, node, \"none-comparison\"))\n        if isinstance(getattr(node, \"body\", None), list):\n            body = node.body\n            for i, stmt in enumerate(body[:-1]):\n                if isinstance(stmt, (ast.Return, ast.Raise)):\n                    out.append(_finding(path, body[i + 1], \"unreachable-code\"))\n                    break\n    return out\n\n\ndef run(data: dict) -> dict:\n    findings, parse_errors = [], []\n    for path, source in sorted(data.get(\"files\", {}).items()):\n        if not path.endswith(\".py\"):\n            continue\n        try:\n            tree = ast.parse(source, filename=path)\n        except SyntaxError as e:\n            parse_errors.append(f\"{path}: line {e.lineno}: {e.msg}\")\n            continue\n        findings.extend(_check(path, tree))\n    findings.sort(key=lambda f: (f[\"file\"], f[\"line\"], f[\"rule\"]))\n    return {\"findings\": findings, \"count\": len(findings), \"parse_errors\": parse_errors}\n",
+  "SKILL.md": "---\nname: python-bug-finder\ndescription: \"Analyzes Python source files, identifies potential bugs and suggests improvements. Use when reviewing Python code for common defects.\"\n---\n\n# Python Bug Finder\n\n1. Collect the Python files of the project as {path: source}.\n2. Run the analyzer and read `findings` (file, line, rule, message, suggestion).\n3. Report findings grouped by file, most severe first, with the suggested fix.\n\n## How to run\n\nThis Skill ships a deterministic Python script (stdlib only). From this Skill's directory:\n\n```bash\npython scripts/cli.py --dir <path-to-project>   # builds {\"files\": {...}} from the folder\npython scripts/cli.py input.json               # or pass JSON matching the input schema\n```\n\nRead the JSON output and explain the results to the user. Do not modify files unless asked.\n",
+  "tests/test_main.py": "import unittest\n\nfrom main import run\n\n\nclass TestPythonBugFinder(unittest.TestCase):\n    def test_bare_except_is_reported_with_line_and_suggestion(self):\n        out = run({\"files\": {\"a.py\": \"try:\\n    x = 1\\nexcept:\\n    pass\\n\"}})\n        self.assertEqual(out[\"count\"], 1)\n        self.assertEqual(out[\"findings\"][0][\"rule\"], \"bare-except\")\n        self.assertEqual(out[\"findings\"][0][\"line\"], 3)\n        self.assertTrue(out[\"findings\"][0][\"suggestion\"])\n\n    def test_mutable_default_and_none_comparison(self):\n        src = \"def f(items=[]):\\n    if items == None:\\n        return 0\\n    return len(items)\\n\"\n        rules = sorted(f[\"rule\"] for f in run({\"files\": {\"b.py\": src}})[\"findings\"])\n        self.assertEqual(rules, [\"mutable-default\", \"none-comparison\"])\n\n    def test_clean_file_has_no_findings(self):\n        out = run({\"files\": {\"ok.py\": \"def f(x=None):\\n    return x is None\\n\"}})\n        self.assertEqual(out, {\"findings\": [], \"count\": 0, \"parse_errors\": []})\n\n    def test_syntax_error_is_reported_not_raised(self):\n        out = run({\"files\": {\"bad.py\": \"def (:\\n\"}})\n        self.assertEqual(out[\"count\"], 0)\n        self.assertEqual(len(out[\"parse_errors\"]), 1)\n\n    def test_non_python_files_are_ignored(self):\n        self.assertEqual(run({\"files\": {\"README.md\": \"except:\"}})[\"count\"], 0)\n"
+ }
+}

@@ -2,14 +2,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, type SkillRow } from "../api";
 import { useT, type Key } from "../i18n";
-import { go, href } from "../route";
+import { go, href, type FileTarget } from "../route";
 import { Inspector } from "../workspace/Inspector";
 import { Empty, ErrorNote, field, toneOf } from "../workspace/kit";
 import { CodeI } from "../workspace/icons";
 
 const DOT: Record<string, string> = { ok: "bg-ok", info: "bg-info", warn: "bg-warn", bad: "bg-bad", accent: "bg-accent", mute: "bg-faint" };
 
-export function Code({ id, tab }: { id?: string; tab?: string }) {
+export function Code({ id, tab, file }: { id?: string; tab?: string; file?: FileTarget }) {
   const t = useT();
   const skills = useQuery({ queryKey: ["skills"], queryFn: () => api<SkillRow[]>("/studio/skills") });
   const current = id ?? skills.data?.find((s) => s.latest)?.latest?.id;
@@ -34,7 +34,8 @@ export function Code({ id, tab }: { id?: string; tab?: string }) {
         ))}
       </nav>
       <div className="min-h-0 min-w-0 flex-1 bg-panel">
-        {current ? <Inspector key={`${current}/${tab ?? ""}`} id={current} tab={tab} onSelect={(v) => go("code", v, tab)} />
+        {current ? <Inspector key={`${current}/${tab ?? ""}/${file?.path ?? ""}/${file?.start ?? ""}-${file?.end ?? ""}`} id={current} tab={tab} file={file}
+          onSelect={(v) => go("code", v, tab)} />
           : skills.data && <Empty icon={<CodeI size={16} />} title={t("code.empty")} body={t("skills.empty")} />}
       </div>
     </div>

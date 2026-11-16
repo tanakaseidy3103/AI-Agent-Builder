@@ -23,3 +23,13 @@ export function useJob(id: string | null, owner = false) {
   }, [owner, settled, qc]);
   return q;
 }
+
+/**
+ * One package file as text. Shared by the Files tab and the Skill Flow so a file is fetched once per version and path
+ * (TanStack dedupes concurrent requests for the same key and serves later readers from the cache).
+ */
+export const fileQuery = (versionId: string, path: string) => ({
+  queryKey: ["file", versionId, path] as const,
+  queryFn: () => api<string>(`/studio/versions/${versionId}/files/${path}`),
+  staleTime: Infinity, // a stored version is immutable (edits create a new version): never refetch the same file
+});

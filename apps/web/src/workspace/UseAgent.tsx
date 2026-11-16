@@ -1,10 +1,11 @@
 /** "What can I do with it now?": only actions the backend supports for this version's real status. */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { API, api, type Report, type VersionDetail } from "../api";
+import { DEMO, api, type Report, type VersionDetail } from "../api";
 import { useT } from "../i18n";
 import { href } from "../route";
+import { DownloadZip } from "./DownloadZip";
 import { CodeI, Download, Flask, Folder, Globe } from "./icons";
-import { ErrorNote, StatusPill, sectionTitle } from "./kit";
+import { ErrorNote, StatusPill } from "./kit";
 
 const link = "inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-raised px-2.5 text-xs font-medium text-ink hover:border-line-strong hover:bg-hover";
 const bigBtn = "inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-raised px-4 text-sm font-medium text-ink transition-colors hover:border-accent/40 hover:bg-hover";
@@ -26,10 +27,11 @@ export function UseAgent({ v, onView }: { v: VersionDetail; onView: () => void }
   return (
     <div className="space-y-3 rounded-lg border border-accent/25 bg-accent/5 px-4 py-3.5" role="group" aria-label={t("use.title")}>
       <p className="text-sm font-semibold text-ink">{t("use.title")}</p>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className={`grid gap-2 ${DEMO ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
         <button type="button" className={bigBtn} onClick={onView}><CodeI size={14} />{t("use.view")}</button>
-        <a className={bigBtn} href={`${API}/studio/versions/${v.id}/export/canonical`} download><Download size={14} />{t("use.download")}</a>
-        <a className={bigBtn} href={href("projects")}><Folder size={14} />{t("use.project")}</a>
+        <DownloadZip className={bigBtn} path={`/studio/versions/${v.id}/export/canonical`}><Download size={14} />{t("use.download")}</DownloadZip>
+        {/* the demo never installs anything on the machine that hosts it */}
+        {!DEMO && <a className={bigBtn} href={href("projects")}><Folder size={14} />{t("use.project")}</a>}
       </div>
       <div className="flex flex-wrap gap-2">
         <a className={link} href={href("code", v.id, "export")}><Globe size={13} />{t("use.export")}</a>

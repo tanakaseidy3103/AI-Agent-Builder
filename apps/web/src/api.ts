@@ -1,4 +1,15 @@
-export const API = "/api";
+/** Build-time configuration (Vite). Local development keeps the defaults: same-origin "/api" through the Vite proxy.
+ * A public demo build sets VITE_API_BASE to the demo backend URL and VITE_DEMO_MODE=true. Never put secrets here:
+ * everything in import.meta.env ends up in the public JavaScript bundle. */
+export const API = String(import.meta.env.VITE_API_BASE || "/api").replace(/\/+$/, "");
+export const DEMO = import.meta.env.VITE_DEMO_MODE === "true";
+/** Pages the public demo does not offer: installing into a folder of the host machine. */
+export const DEMO_HIDDEN = ["projects"];
+
+/** The demo backend serves the visitor-safe subset of the Studio API under /demo/* (apps/api/app/demo/routes.py). */
+export function apiPath(path: string): string {
+  return DEMO ? path.replace(/^\/studio\//, "/demo/") : path;
+}
 
 export type StageStatus = "pending" | "running" | "passed" | "failed" | "skipped";
 export interface Stage { name: string; status: StageStatus; detail?: string; duration_ms?: number }
@@ -26,7 +37,8 @@ export interface Report {
   llm?: LlmUsage | null;
   failure_category?: FailureCategory;
   repair_rounds?: number;
-  sandbox: { status: "ran" | "error" | "unavailable" | "not_run"; error?: string | null; duration_ms?: number; limits?: { memory_mb: number; timeout_s: number } };
+  sandbox: { status: "ran" | "error" | "unavailable" | "not_run"; error?: string | null;
+    kind?: "timeout" | "memory" | "no_result" | "malformed_result" | "load_error" | "infrastructure" | null; duration_ms?: number; limits?: { memory_mb: number; timeout_s: number } };
 }
 export type AgentId = "architect" | "coder" | "reviewer" | "tester" | "packager";
 export interface AgentEvent { id: number; agent_id: AgentId; run_id: string; state: string; message: string | null; at: string }
@@ -36,6 +48,7 @@ export interface Manifest {
   tools: string[]; dependencies: string[]; permissions: string[];
   input_schema: object; output_schema: object; compatibility: string[];
   execution?: { entrypoint: string; timeout_seconds: number; memory_mb: number };
+  origin?: "generated" | "reference";
 }
 export interface VersionDetail extends VersionSummary {
   manifest: Manifest; files: { path: string; size: number }[];
@@ -91,17 +104,111 @@ async function detail(r: Response): Promise<string> {
   try {
     return errorText(r.status, await r.json());
   } catch {
-    return r.status === 502 || r.status === 504 ? "The API is not reachable. Start the backend (see README)." : `HTTP ${r.status}`;
+    // non-JSON error page: a proxy or tunnel answered because the backend is down (Cloudflare uses 52x/530)
+    return [502, 503, 504, 520, 521, 522, 523, 524, 530].includes(r.status) ? OFFLINE : `HTTP ${r.status}`;
   }
 }
 
+/** An HTTP error from the API; `status` lets callers (and the retry policy) tell "not found" from "down". */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** Retry policy for queries: a 4xx answer (except 408/429) will not change by asking again. Before the 2026-11 audit
+ * an unknown /#/code/<id> link showed "Loading…" for the whole default 3-retry backoff before the 404 message. */
+export function shouldRetry(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) return false;
+  return failureCount < 3;
+}
+
+/** Shown when the server cannot be reached at all (network error, tunnel down, laptop off). */
+export const OFFLINE = DEMO
+  ? "The demo server cannot be reached. It runs on a personal laptop and may be offline right now; please try again later."
+  : "The API is not reachable. Start the backend (see README).";
+
+// ---- demo visitor session: an anonymous bearer token, kept per browser; created on first use
+const TOKEN_KEY = "aab-demo-session";
+let token: string | null = null;
+let creating: Promise<string> | null = null;
+
+function storedToken(): string | null {
+  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+
+async function demoToken(renew = false): Promise<string> {
+  if (!renew) token ??= storedToken();
+  if (token && !renew) return token;
+  creating ??= (async () => {
+    const r = await rawFetch("/demo/session", { method: "POST" });
+    if (!r.ok) throw new ApiError(await detail(r), r.status);
+    const t = ((await r.json()) as { token: string }).token;
+    try { localStorage.setItem(TOKEN_KEY, t); } catch { /* private mode: keep it in memory only */ }
+    return t;
+  })().finally(() => { creating = null; });
+  token = await creating;
+  return token;
+}
+
+// ---- presentation access code (DEMO_ACCESS_CODE on the server): typed by the visitor, kept for this tab only.
+// It is a shared code the presenter announces, not a secret of the build: nothing is embedded in the bundle.
+const CODE_KEY = "aab-demo-code";
+export function demoCode(): string {
+  try { return sessionStorage.getItem(CODE_KEY) ?? ""; } catch { return ""; }
+}
+export function setDemoCode(code: string): void {
+  try { if (code) sessionStorage.setItem(CODE_KEY, code); else sessionStorage.removeItem(CODE_KEY); } catch { /* storage blocked */ }
+}
+/** What /demo/status tells every visitor (public, no session). */
+export interface DemoStatus {
+  model: string; model_ready: boolean; queue: number; queue_max: number; access_code_required?: boolean;
+  limits: { generations_per_session: number; data_ttl_hours: number };
+}
+
+async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(API + path, init);
+  } catch {
+    throw new ApiError(OFFLINE, 0);  // fetch only rejects on network failure (DNS, refused, CORS, offline)
+  }
+}
+
+/** fetch() against the backend, with the demo session header when in demo mode (renewed once on 401). */
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const p = apiPath(path);
+  const send = async (renew: boolean) => {
+    const headers = new Headers(init?.headers);
+    if (init?.body) headers.set("Content-Type", "application/json");
+    if (DEMO && p.startsWith("/demo/") && p !== "/demo/status") headers.set("X-Demo-Session", await demoToken(renew));
+    if (DEMO && p.startsWith("/demo/") && demoCode()) headers.set("X-Demo-Code", demoCode());
+    return rawFetch(p, { ...init, headers });
+  };
+  const r = await send(false);
+  return DEMO && r.status === 401 ? send(true) : r;  // expired or unknown session: start a fresh one, once
+}
+
+/** Download a file through apiFetch (a plain <a href> cannot send the demo session header). */
+export async function download(path: string, fallbackName: string): Promise<void> {
+  const r = await apiFetch(path);
+  if (!r.ok) throw new ApiError(await detail(r), r.status);
+  const name = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await r.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(API + path, {
-    ...init,
-    headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
-  });
-  if (!r.ok) throw new Error(await detail(r));
+  const r = await apiFetch(path, init);
+  if (!r.ok) throw new ApiError(await detail(r), r.status);
   if (r.status === 204) return undefined as T;
   const type = r.headers.get("content-type") ?? "";
   return (type.includes("application/json") ? r.json() : r.text()) as Promise<T>;
 }
+
+/** The API stores UTC; SQLite returns it without an offset ("2026-11-14T02:22:15"), which browsers would read as local time. */
+export const parseTime = (iso: string) => Date.parse(/(Z|[+-]\d\d:?\d\d)$/i.test(iso) ? iso : `${iso}Z`);

@@ -37,7 +37,11 @@ test("real generation drives the Agent Office from persisted events and ends wit
   expect(maxWorking).toBeLessThanOrEqual(1);   // a sequential pipeline never shows two agents working at once
   expect(seen.size).toBeGreaterThanOrEqual(3); // real handoffs were observed live
 
-  const roles = await page.getByRole("list", { name: "Live activity" }).locator(":scope > li").evaluateAll((els) => els.map((e) => e.getAttribute("data-role")));
+  // the "Live activity" list this used to read is no longer rendered (ActivityStream is unused since the Studio's
+  // right pane became Planner | Agent result); the order is checked on the persisted events the Office is drawn from
+  const jobs = await (await page.request.get("/api/studio/jobs")).json() as { id: string; prompt: string }[];
+  const events = await (await page.request.get(`/api/studio/events?run_id=${jobs[0].id}&limit=500`)).json() as { agent_id: string }[];
+  const roles = events.map((e) => e.agent_id).filter((r, i, a) => r !== a[i - 1]); // one entry per turn
   expect(roles[0]).toBe("architect");
   expect(roles.at(-1)).toBe("packager");
   await page.screenshot({ path: shot("finished") });

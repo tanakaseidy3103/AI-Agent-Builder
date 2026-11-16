@@ -1,5 +1,5 @@
 /** Right pane while a run is in focus: the selected agent, its current task, its stages, results per round and evidence. */
-import type { AgentId, Job } from "../api";
+import { parseTime, type AgentId, type Job } from "../api";
 import { useT, type Key } from "../i18n";
 import { Button, Pill, StepMark, sectionTitle } from "./kit";
 import { AgentBadge, fmtSecs, taskOf, useElapsed, useRunEvents } from "./Office";
@@ -74,7 +74,7 @@ export function AgentPanel({ job, role, onOpenResult }: { job: Job; role: AgentI
                   <StepMark status={s.kind === "error" ? "failed" : s.kind === "completed" ? "passed" : s.kind} />
                   <span className="min-w-0 flex-1 break-words"><span className="text-ink/90">{s.kind === "completed" ? s.detail : taskOf(t, s.stage, s.label)}</span>
                     {s.kind !== "completed" && s.detail && <span className="text-mute"> — {s.detail}</span>}</span>
-                  <time className="shrink-0 tabular-nums text-[11px] text-faint" dateTime={s.ev.at}>{new Date(s.ev.at).toLocaleTimeString()}</time>
+                  <time className="shrink-0 tabular-nums text-[11px] text-faint" dateTime={s.ev.at}>{new Date(parseTime(s.ev.at)).toLocaleTimeString()}</time>
                 </li>
               ))}
             </ol>

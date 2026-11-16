@@ -82,10 +82,12 @@ test("form validation, live pipeline, result workspace and export of a verified 
   await expect(page.getByText("Write at least 10 characters.")).toBeVisible();
   await page.getByRole("button", { name: /^Laravel bug finder/ }).click();
   await page.getByRole("button", { name: "Create agent" }).click();
+  await pane(page, "Result");                                                       // phones: live progress is on the Result pane
   await expect(page.getByText(/Now · Developer/)).toBeVisible();                    // only while the backend reports a running stage
   await expect(page.getByTestId("role-coder")).toHaveAttribute("data-state", "working");
   await expect(page.getByTestId("role-reviewer")).toHaveAttribute("data-state", "waiting");     // nobody else pretends to work
   await expect(page.getByTestId("role-coder")).toHaveAttribute("data-state", "done");
+  await pane(page, "Build");
   await page.getByRole("button", { name: "Open the result" }).click();
   await openFile(page, "SKILL.md");
   await expect(page.getByLabel("file preview")).toContainText("name: laravel-bug-finder");
@@ -166,8 +168,10 @@ test("plan review: nothing is generated until the user approves; rejecting disca
   await page.getByRole("button", { name: "Propose plan" }).click();
   const plan = page.getByTestId("plan-review");
   await expect(plan).toBeVisible();
+  await pane(page, "Result");                                                       // phones: the office is on the Result pane
   await expect(page.getByRole("region", { name: "Agent Office" }).getByText("Approval needed")).toBeVisible();
   for (const r of ["architect", "coder", "reviewer", "tester", "packager"]) await expect(page.getByTestId(`role-${r}`)).toHaveAttribute("data-state", "waiting");
+  await pane(page, "Build");
   await plan.getByRole("button", { name: "Reject" }).click();
   await expect(plan).toHaveCount(0);
   expect(generated).toEqual([]);

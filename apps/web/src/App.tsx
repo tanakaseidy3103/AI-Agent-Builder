@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DEMO, DEMO_HIDDEN } from "./api";
 import { useLang, useT, type Key } from "./i18n";
 import { Agents } from "./pages/Agents";
 import { Code } from "./pages/Code";
@@ -9,6 +10,7 @@ import { Projects } from "./pages/Projects";
 import { Settings } from "./pages/Settings";
 import { Studio, clearStudioSession, type Draft } from "./pages/Studio";
 import { go, useRoute } from "./route";
+import { DemoBanner } from "./workspace/DemoBanner";
 import { Cross, Menu } from "./workspace/icons";
 import { Sidebar } from "./workspace/Sidebar";
 
@@ -49,12 +51,13 @@ export function App() {
             className="grid h-8 w-8 place-items-center rounded-md text-mute hover:bg-hover hover:text-ink">{drawer ? <Cross size={15} /> : <Menu size={16} />}</button>
           <span className="truncate text-[13px] font-medium text-ink">{t(`nav.${page}` as Key)}</span>
         </div>
+        {DEMO && <DemoBanner />}
         <main id="main" tabIndex={-1} className="min-h-0 flex-1 focus:outline-none">
           <div className={page === "studio" ? "h-full" : "hidden"}><Studio draft={draft} resetKey={studioKey} /></div>
-          {page === "overview" && <Overview />}
+          {(page === "overview" || (DEMO && DEMO_HIDDEN.includes(page))) && <Overview />}
           {page === "agents" && <Agents onEdit={edit} />}
-          {page === "code" && <Code id={route.id} tab={route.tab} />}
-          {page === "projects" && <Projects />}
+          {page === "code" && <Code id={route.id} tab={route.tab} file={route.file} />}
+          {page === "projects" && !DEMO && <Projects />}
           {page === "evaluations" && <Evaluations />}
           {page === "integrations" && <Integrations />}
           {page === "settings" && <Settings />}

@@ -1,15 +1,15 @@
 /** Left navigation. Every value shown here (recent projects, model, API state) comes from the backend. */
 import { useQuery } from "@tanstack/react-query";
-import { api, type Job, type Models } from "../api";
+import { DEMO, DEMO_HIDDEN, api, type Job, type Models } from "../api";
 import { useLang, useT, type Key } from "../i18n";
 import { href, type PageId } from "../route";
 import { Alert, Chip, CodeI, Cube, Flask, Folder, Gear, Globe, Grid, Plug, Plus, Spark } from "./icons";
 import { sectionTitle, toneOf } from "./kit";
 
-const NAV: [PageId, typeof Spark][] = [
+const NAV: [PageId, typeof Spark][] = ([
   ["overview", Grid], ["studio", Spark], ["agents", Cube], ["code", CodeI],
   ["projects", Folder], ["evaluations", Flask], ["integrations", Plug], ["settings", Gear],
-];
+] as [PageId, typeof Spark][]).filter(([p]) => !(DEMO && DEMO_HIDDEN.includes(p)));
 const DOT: Record<string, string> = { ok: "bg-ok", info: "bg-info", warn: "bg-warn", bad: "bg-bad", accent: "bg-accent", mute: "bg-faint" };
 
 export function Sidebar({ page, onNew, onNavigate }: { page: PageId; onNew: () => void; onNavigate?: () => void }) {

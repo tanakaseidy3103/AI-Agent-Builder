@@ -1,0 +1,6 @@
+# Response headers for the static frontend on Cloudflare Pages (copied to dist/ by Vite; ignored by `vite dev`).
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()

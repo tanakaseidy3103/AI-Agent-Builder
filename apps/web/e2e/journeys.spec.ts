@@ -33,8 +33,9 @@ test("beginner: understands the product, creates an agent from an example, finds
   });
   const u = counter(page);
   await page.goto("/");
-  await expect(page.getByRole("region", { name: "How it works" })).toContainText("An agent is a small, tested program");
-  await u.click(page.getByRole("link", { name: "Create agent" }));
+  await expect(page.getByRole("region", { name: "Turn a plain-language description into a tested Skill" })).toContainText("A Skill is a small package");
+  await expect(page.getByRole("region", { name: "How it works" })).toContainText("Understand");
+  await u.click(page.getByRole("link", { name: "Create your first Skill" }));
   await u.click(page.getByRole("button", { name: /^Laravel bug finder/ }));
   await u.click(page.getByRole("button", { name: "Create agent" }));
   await expect(page.getByRole("group", { name: "Use this agent" })).toBeVisible();
@@ -63,7 +64,11 @@ test("developer: finds a verified agent, checks its validation, exports it (real
   expect(u.clicks).toBeLessThanOrEqual(5);
 });
 
-test("returning user: finds an agent, understands its status, refines it, runs the evaluation again (real data)", async ({ page }) => {
+test("returning user: finds an agent, understands its status, refines it, runs the evaluation again (real data)", async ({ page, request }) => {
+  // needs a generated Skill that reached `validated` (reference Skills are all verified); real generations create one
+  const skills = await (await request.get("/api/studio/skills")).json();
+  test.skip(!skills.some((s: { latest?: { status: string } }) => s.latest?.status === "validated"),
+    "no `validated` Skill in this database (run a real generation first, e.g. audit-real-flow)");
   const u = counter(page);
   await page.goto("/#/agents");
   await page.getByLabel("Filter by status").selectOption("validated");

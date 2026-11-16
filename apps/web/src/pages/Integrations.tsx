@@ -63,7 +63,7 @@ export function Integrations() {
         <section aria-label={t("int.api")} className={`${card} space-y-2 p-4 xl:col-span-2`}>
           <h2 className={`${sectionTitle} flex items-center gap-1.5`}><Key size={13} />{t("int.api")}</h2>
           <p className="text-[12.5px] leading-relaxed text-mute">{t("int.apiBody")}</p>
-          <a href={href("settings")} className="text-[12.5px] text-accent-ink hover:underline">{t("int.apiKeys")}</a>
+          <a href={href("settings")} className="inline-flex min-h-6 items-center text-[12.5px] text-accent-ink hover:underline">{t("int.apiKeys")}</a>
         </section>
       </div>
     </div>

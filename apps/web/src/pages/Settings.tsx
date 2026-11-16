@@ -1,3 +1,4 @@
+import { DEMO } from "../api";
 import { useLang, useT } from "../i18n";
 import { ApiKeys } from "../workspace/ApiKeys";
 import { PageHeader, card, sectionTitle } from "../workspace/kit";
@@ -18,7 +19,7 @@ export function Settings() {
             ))}
           </div>
         </section>
-        <ApiKeys />
+        {!DEMO && <ApiKeys />}
       </div>
     </div>
   );
