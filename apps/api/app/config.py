@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # Host header allowlist (DNS-rebinding defence). "testserver" is FastAPI TestClient's host.
     allowed_hosts: list[str] = ["localhost", "127.0.0.1", "[::1]", "testserver"]
     max_run_input_bytes: int = 1_000_000
+    max_request_bytes: int = 2_000_000  # whole HTTP body; a run input of max_run_input_bytes plus JSON overhead fits
     max_repair_rounds: int = 3
     max_concurrent_generations: int = 2
 

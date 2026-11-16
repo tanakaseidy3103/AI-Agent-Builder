@@ -20,7 +20,55 @@ async def lifespan(_: FastAPI):
     yield
 
 
+class BodyLimit:
+    """Refuse request bodies above settings.max_request_bytes while they stream in (Content-Length or chunked).
+    Without it a request is read fully into memory before any endpoint-level size check runs."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        limit = settings.max_request_bytes
+        declared = dict(scope.get("headers") or []).get(b"content-length")
+        if declared is not None and (not declared.isdigit() or int(declared) > limit):
+            return await self._reject(send)
+        # Read the body here (bounded), then replay it. Raising from inside receive() would not work: FastAPI turns
+        # any error while reading the body into a 400.
+        chunks, size = [], 0
+        while True:
+            message = await receive()
+            if message["type"] != "http.request":
+                return  # client disconnected
+            chunk = message.get("body", b"")
+            size += len(chunk)
+            if size > limit:
+                return await self._reject(send)
+            chunks.append(chunk)
+            if not message.get("more_body"):
+                break
+        body, replayed = b"".join(chunks), False
+
+        async def replay():
+            nonlocal replayed
+            if not replayed:
+                replayed = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            return await receive()  # after the body: wait for disconnect like the real channel
+
+        await self.app(scope, replay, send)
+
+    @staticmethod
+    async def _reject(send):
+        body = b'{"detail":"request body too large"}'
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+
 app = FastAPI(title="AI Agent Builder API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(BodyLimit)
 # The Studio is unauthenticated and trusts loopback clients. Without a Host allowlist, a web page using DNS
 # rebinding (evil.example -> 127.0.0.1) would reach it from the user's browser as a "local" client.
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_hosts)

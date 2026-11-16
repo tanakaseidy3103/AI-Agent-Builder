@@ -219,6 +219,50 @@ def test_dns_rebinding_hosts_are_rejected(client, host, code):
     assert client.get("/studio/skills", headers={"Host": host}).status_code == code
 
 
+@pytest.mark.parametrize("headers, code", [
+    ({"Origin": "https://evil.example"}, 403),
+    ({"Origin": "null"}, 403),
+    ({"Sec-Fetch-Site": "cross-site"}, 403),
+    ({"Origin": "http://localhost:5173", "Sec-Fetch-Site": "same-origin"}, 200),  # the Studio via the Vite proxy
+    ({"Origin": "http://127.0.0.1:5173"}, 200),
+    ({"Origin": "http://[::1]:5173"}, 200),
+    ({}, 200),  # curl / SDK / scripts send no Origin
+])
+def test_cross_site_browser_requests_to_studio_are_refused(client, headers, code):
+    assert client.get("/studio/skills", headers=headers).status_code == code
+
+
+def test_cross_site_websocket_is_refused(client):
+    """Browsers apply no CORS to WebSockets: before the fix any open website could read the live event stream."""
+    from starlette.websockets import WebSocketDisconnect
+    with pytest.raises(WebSocketDisconnect) as e:
+        with client.websocket_connect("/studio/events/ws", headers={"Origin": "https://evil.example"}) as ws:
+            ws.receive_json()
+    assert e.value.code == 1008
+    with client.websocket_connect("/studio/events/ws", headers={"Origin": "http://localhost:5173"}):
+        pass  # the Studio's own origin still connects
+
+
+def test_oversized_request_body_is_refused_before_parsing(client, api_key, monkeypatch):
+    monkeypatch.setattr(settings, "max_request_bytes", 1000)
+    auth = {"Authorization": f"Bearer {api_key}"}
+    big = {"input": {"x": "a" * 2000}}
+    assert client.post("/v1/skills/x/run", json=big, headers=auth).status_code == 413
+    def chunks():  # no Content-Length: streamed body must be counted too
+        yield b'{"input": {"x": "'
+        for _ in range(5):
+            yield b"a" * 500
+        yield b'"}}'
+    r = client.post("/v1/skills/x/run", content=chunks(), headers={**auth, "Content-Type": "application/json"})
+    assert r.status_code == 413
+    assert client.post("/v1/skills/x/run", json={"input": {}}, headers=auth).status_code == 404  # small body still served
+
+
+@pytest.mark.parametrize("query", ["limit=-1", "limit=0", "limit=501", "after=-5"])
+def test_event_query_bounds_are_validated(client, query):
+    assert client.get(f"/studio/events?{query}").status_code == 422
+
+
 def test_concurrent_generations_are_limited(client, factory, monkeypatch):
     from app.models import GenerationJob
     monkeypatch.setattr(settings, "max_concurrent_generations", 2)

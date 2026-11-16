@@ -8,6 +8,7 @@ import io
 import json
 import subprocess
 import tarfile
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -126,6 +127,7 @@ def _tar(files: dict[str, str], extra: dict[str, str]) -> bytes:
 def docker_cmd(name: str, memory_mb: int, timeout_s: int, args: list[str]) -> list[str]:
     return [
         "docker", "run", "-i", "--rm", "--name", name,
+        "--log-driver", "none",  # output is streamed to us; never also persist a flood into the Docker VM's log files
         "--network", "none",
         "--memory", f"{memory_mb}m", "--memory-swap", f"{memory_mb}m",
         "--cpus", "1", "--pids-limit", "64",
@@ -137,6 +139,35 @@ def docker_cmd(name: str, memory_mb: int, timeout_s: int, args: list[str]) -> li
     ]
 
 
+# Host-side caps on captured output. Untrusted code can print gigabytes within its time limit (measured: 1.78 GB of
+# host memory for one 10 s run before this cap); only the tail matters because the result is the last stdout line.
+MAX_STDOUT_BYTES = 8_000_000
+MAX_STDERR_BYTES = 64_000
+
+
+def _drain(stream, limit: int, sink: list) -> None:
+    """Read a pipe to EOF keeping only its last `limit` bytes, so memory stays bounded whatever the child writes."""
+    buf, total = bytearray(), 0
+    for chunk in iter(lambda: stream.read(65536), b""):
+        total += len(chunk)
+        buf += chunk
+        if len(buf) > limit:
+            del buf[: len(buf) - limit]
+    sink.append((bytes(buf), total))
+
+
+def _feed(stream, data: bytes) -> None:
+    try:
+        stream.write(data)
+    except (BrokenPipeError, OSError):
+        pass  # the container exited before reading everything; its exit status tells the story
+    finally:
+        try:
+            stream.close()
+        except OSError:
+            pass
+
+
 def execute(files: dict[str, str], args: list[str], *, input_data: dict | None = None,
             timeout_s: int = 10, memory_mb: int = 256) -> SandboxResult:
     extra = {"_runner.py": RUNNER}
@@ -145,16 +176,33 @@ def execute(files: dict[str, str], args: list[str], *, input_data: dict | None =
     name = f"aab-sbx-{uuid.uuid4().hex[:12]}"
     start = time.monotonic()
     try:
-        proc = subprocess.run(docker_cmd(name, memory_mb, timeout_s, args), input=_tar(files, extra),
-                              capture_output=True, timeout=timeout_s + 15, env=None)  # +15s container startup
+        proc = subprocess.Popen(docker_cmd(name, memory_mb, timeout_s, args), stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=None)
     except FileNotFoundError as e:
         raise SandboxUnavailable("docker CLI not found; run the API on a host with Docker") from e
+    outs: list = []
+    errs: list = []
+    threads = [threading.Thread(target=_feed, args=(proc.stdin, _tar(files, extra)), daemon=True),
+               threading.Thread(target=_drain, args=(proc.stdout, MAX_STDOUT_BYTES, outs), daemon=True),
+               threading.Thread(target=_drain, args=(proc.stderr, MAX_STDERR_BYTES, errs), daemon=True)]
+    for t in threads:
+        t.start()
+    try:
+        proc.wait(timeout=timeout_s + 15)  # +15s container startup
     except subprocess.TimeoutExpired:
         subprocess.run(["docker", "kill", name], capture_output=True)
+        proc.kill()
+        proc.wait()
+        for t in threads:
+            t.join(5)
         return SandboxResult(False, error=f"timeout after {timeout_s}s", duration_ms=int((time.monotonic() - start) * 1000))
+    for t in threads:
+        t.join(5)
     duration = int((time.monotonic() - start) * 1000)
-    out = proc.stdout.decode("utf-8", "replace")
-    err = proc.stderr.decode("utf-8", "replace")
+    raw_out, out_total = outs[0] if outs else (b"", 0)
+    raw_err = errs[0][0] if errs else b""
+    out = raw_out.decode("utf-8", "replace")
+    err = raw_err.decode("utf-8", "replace")
     if "Cannot connect to the Docker daemon" in err or "dockerDesktopLinuxEngine" in err:
         raise SandboxUnavailable("Docker daemon is not running")
     lines = out.rstrip("\n").splitlines()
@@ -162,18 +210,32 @@ def execute(files: dict[str, str], args: list[str], *, input_data: dict | None =
     if line is None:
         reason = {124: f"timeout after {timeout_s}s", 137: "killed (memory limit)"}.get(
             proc.returncode, f"no result (exit {proc.returncode})")
+        if out_total > MAX_STDOUT_BYTES:
+            reason += f"; output truncated ({out_total} bytes written, last {MAX_STDOUT_BYTES} kept)"
         return SandboxResult(False, error=reason,
                              duration_ms=duration, stdout_tail=out[-2000:], stderr_tail=err[-2000:])
-    return SandboxResult(True, json.loads(line[len(MARKER):]), duration_ms=duration,
-                         stdout_tail=out[-2000:], stderr_tail=err[-2000:])
+    try:
+        data = json.loads(line[len(MARKER):])
+    except json.JSONDecodeError:
+        return SandboxResult(False, error="malformed result line", duration_ms=duration,
+                             stdout_tail=out[-2000:], stderr_tail=err[-2000:])
+    return SandboxResult(True, data, duration_ms=duration, stdout_tail=out[-2000:], stderr_tail=err[-2000:])
+
+
+def _without_evals(files: dict[str, str]) -> dict[str, str]:
+    """Eval expectations stay on the host. Inside the container, Skill code could read evals/cases.json and echo
+    expect.contains back, holdout included; a probe Skill doing exactly that was marked `verified` before this."""
+    return {p: t for p, t in files.items() if not p.startswith("evals/")}
 
 
 def run_tests(files: dict[str, str], test_dir: str, timeout_s: int, memory_mb: int) -> SandboxResult:
-    return execute(files, ["test", test_dir], timeout_s=timeout_s, memory_mb=memory_mb)
+    return execute(_without_evals(files), ["test", test_dir], timeout_s=timeout_s, memory_mb=memory_mb)
 
 
 def run_evals(files: dict[str, str], entrypoint: str, cases: list[dict], timeout_s: int, memory_mb: int) -> SandboxResult:
-    extra_files = {**files, "_cases.json": json.dumps(cases)}
+    # only what run() needs: names to match results back and inputs. Expectations and the holdout flag never enter.
+    inputs = [{"name": c.get("name"), "input": c.get("input")} for c in cases]
+    extra_files = {**_without_evals(files), "_cases.json": json.dumps(inputs)}
     return execute(extra_files, ["eval", entrypoint], timeout_s=timeout_s, memory_mb=memory_mb)
 
 

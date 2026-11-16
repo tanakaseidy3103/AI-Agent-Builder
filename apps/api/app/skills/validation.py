@@ -23,7 +23,18 @@ UNGRANTED_PERMISSIONS = {"network", "filesystem-write"}
 FORBIDDEN_MODULES = {
     "subprocess", "socket", "ctypes", "multiprocessing", "urllib", "http", "ftplib",
     "smtplib", "ssl", "requests", "pty", "signal", "resource", "importlib", "webbrowser",
+    "shutil", "tempfile", "builtins",
 }
+# Modules whose attributes must not be reached indirectly via getattr(os, "sys" + "tem") and similar.
+SENSITIVE_MODULES = {"os", "sys", "builtins", "shutil", "subprocess", "io", "pathlib"}
+# Escape hatches from the AST view: frame/globals/builtins introspection reaches anything the policy forbids.
+FORBIDDEN_DUNDERS = {"__builtins__", "__globals__", "__subclasses__", "__code__", "__closure__", "__getattribute__",
+                     "__loader__", "__spec__", "__import__", "__dict__", "__bases__", "__mro__", "f_globals", "f_builtins",
+                     "f_locals", "f_back", "gi_frame", "tb_frame"}
+# pathlib / file-object methods that write or delete. Exported Skills run OUTSIDE the sandbox (user's agent), so
+# filesystem writes are refused even though the read-only sandbox would contain them.
+FORBIDDEN_WRITE_METHODS = {"write_text", "write_bytes", "unlink", "rmdir", "touch", "symlink_to", "hardlink_to",
+                           "chmod", "lchmod", "mkdir"}
 FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "breakpoint", "input"}
 FORBIDDEN_OS_ATTRS = {"_exit", "write", "dup2", "system", "popen", "fork", "kill", "execv", "execve", "execl", "spawnl", "spawnv", "remove", "unlink", "rmdir", "removedirs", "environ", "getenv", "putenv"}
 PIP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*([<>=!~]=?[A-Za-z0-9.*]+)?$")
@@ -78,11 +89,36 @@ def _forbidden_usage(tree: ast.AST) -> list[str]:
             found.append(f"{node.func.id}()")
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "os" and node.attr in FORBIDDEN_OS_ATTRS:
             found.append(f"os.{node.attr}")
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "os":
+            # `from os import system` used to pass: only the os.<attr> spelling was checked
+            found += [f"os.{a.name}" for a in node.names if a.name in FORBIDDEN_OS_ATTRS or a.name == "*"]
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("getattr", "setattr", "delattr")
+                and node.args and isinstance(node.args[0], ast.Name) and node.args[0].id in SENSITIVE_MODULES):
+            found.append(f"{node.func.id}({node.args[0].id}, ...)")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("globals", "vars", "locals"):
+            found.append(f"{node.func.id}()")
+        if isinstance(node, ast.Name) and node.id in FORBIDDEN_DUNDERS:
+            found.append(node.id)
+        if isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_DUNDERS:
+            found.append(f".{node.attr}")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in FORBIDDEN_WRITE_METHODS:
+            found.append(f".{node.func.attr}() (writes or deletes files)")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "open":
             mode = node.args[1] if len(node.args) > 1 else next((k.value for k in node.keywords if k.arg == "mode"), None)
-            if isinstance(mode, ast.Constant) and isinstance(mode.value, str) and set(mode.value) & set("wax+"):
+            if mode is not None and not (isinstance(mode, ast.Constant) and isinstance(mode.value, str)):
+                found.append("open() with a non-literal mode")
+            elif isinstance(mode, ast.Constant) and isinstance(mode.value, str) and set(mode.value) & set("wax+"):
+                found.append("open() for writing")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "open":
+            # Path.open("w") takes the mode first, io.open(path, "w") second: check both literal positions
+            cands = node.args[:2] + [k.value for k in node.keywords if k.arg == "mode"]
+            if any(isinstance(a, ast.Constant) and isinstance(a.value, str) and OPEN_MODE.match(a.value)
+                   and set(a.value) & set("wax+") for a in cands):
                 found.append("open() for writing")
     return found
+
+
+OPEN_MODE = re.compile(r"^[rwxabt+]{1,4}$")
 
 
 def _schema_ok(schema: object) -> bool:

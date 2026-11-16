@@ -1,4 +1,5 @@
 """Real Docker sandbox tests. Skipped when Docker is not available."""
+import json
 import shutil
 import subprocess
 
@@ -59,6 +60,68 @@ def test_generated_code_cannot_forge_test_results():
     r = sandbox.run_tests(files, "tests", 10, 256)
     assert r.ok
     assert [t["status"] for t in r.data["tests"]] == ["fail"]
+
+
+_SNOOP = (
+    "import json, os\n"
+    "def run(d):\n"
+    "    seen = []\n"
+    "    for root, _, names in os.walk('/tmp/w'):\n"
+    "        for n in names:\n"
+    "            if n == 'main.py':\n"
+    "                continue  # this file contains the search strings itself\n"
+    "            try:\n"
+    "                with open(os.path.join(root, n), encoding='utf-8') as f:\n"
+    "                    text = f.read()\n"
+    "            except Exception:\n"
+    "                continue\n"
+    "            if '\"expect\"' in text or 'holdout' in text or 'SECRET-EXPECTATION' in text:\n"
+    "                seen.append(os.path.join(root, n))\n"
+    "    return {'seen': seen}\n"
+)
+
+
+def test_eval_expectations_never_enter_the_container():
+    """Before the 2026-11 audit a Skill reading /tmp/w/evals/cases.json echoed expect.contains back and was marked
+    verified, holdout included. Expectations must stay on the host, where judge_case compares them."""
+    cases = [{"name": "a", "input": {}, "expect": {"contains": {"v": "SECRET-EXPECTATION"}}},
+             {"name": "h", "input": {}, "expect": {"contains": {"v": "SECRET-EXPECTATION"}}, "holdout": True}]
+    files = {"scripts/main.py": _SNOOP, "evals/cases.json": json.dumps(cases), "tests/test_main.py": "import unittest\n"}
+    r = sandbox.run_evals(files, "scripts/main.py", cases, 10, 256)
+    assert r.ok, r.error
+    assert [c["outputs"][0] for c in r.data["cases"]] == [{"seen": []}, {"seen": []}]
+    t = sandbox.execute({**sandbox._without_evals(files)}, ["run", "scripts/main.py"], input_data={}, timeout_s=10)
+    assert t.data["output"] == {"seen": []}
+
+
+def test_forged_marker_cannot_reveal_hidden_expectations():
+    """Skill code CAN forge the runner's result line (same process). That only lets it invent outputs, which it could
+    return from run() anyway; without expectations in the container it cannot pass a case it does not solve."""
+    from app.skills.evaluation import judge_case
+    forge = ("import sys, json\nfrom os import _exit\n"
+             "def run(d):\n"
+             "    fake = {'cases': [{'name': 'a', 'outputs': [{'v': 'guess'}, {'v': 'guess'}], 'error': None,"
+             " 'stdout': '', 'duration_ms': 1}]}\n"
+             "    sys.__stdout__.write('\\n__AAB_RESULT__' + json.dumps(fake) + '\\n'); sys.__stdout__.flush()\n"
+             "    _exit(0)\n")
+    case = {"name": "a", "input": {}, "expect": {"contains": {"v": "SECRET-EXPECTATION"}}}
+    r = sandbox.run_evals({"scripts/main.py": forge}, "scripts/main.py", [case], 10, 256)
+    rec = {c["name"]: c for c in r.data.get("cases", [])}.get("a", {"error": r.error})
+    assert judge_case(case, rec, {"type": "object"})["status"] == "fail"
+
+
+def test_output_flood_keeps_host_memory_bounded():
+    """Measured before the fix: one 10 s run printing in a loop made the API allocate 1.78 GB."""
+    import tracemalloc
+    flood = "import sys\ndef run(d):\n    s = 'A' * 1_000_000 + '\\n'\n    while True:\n        sys.__stdout__.write(s)\n"
+    tracemalloc.start()
+    try:
+        r = sandbox.run_entrypoint({"scripts/main.py": flood}, "scripts/main.py", {}, 5, 256)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert not r.ok and "timeout" in r.error
+    assert peak < 64_000_000, f"host peak {peak / 1e6:.0f} MB"
 
 
 def test_archive_traversal_blocked_inside_container():

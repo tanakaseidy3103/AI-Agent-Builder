@@ -61,9 +61,31 @@ def test_syntax_error_detected():
     "def run(d):\n    open('/x', 'w')\n    return {}",
     "import numpy\ndef run(d): return {}",
     "import os\ndef run(d):\n    os._exit(0)",
+    # bypasses that passed static validation before the 2026-11 audit (probe: all five reported no failure)
+    "from os import system\ndef run(d):\n    system('ls')\n    return {}",
+    "from os import _exit\ndef run(d):\n    _exit(0)",
+    "import os\ndef run(d):\n    getattr(os, 'sys' + 'tem')('ls')\n    return {}",
+    "import shutil\ndef run(d):\n    shutil.rmtree('/x')\n    return {}",
+    "from pathlib import Path\ndef run(d):\n    Path('x.txt').write_text('x')\n    return {}",
+    "from pathlib import Path\ndef run(d):\n    Path('x.txt').unlink()\n    return {}",
+    "from pathlib import Path\ndef run(d):\n    Path('x.txt').open('w')\n    return {}",
+    "def run(d):\n    __builtins__['ev' + 'al']('1')\n    return {}",
+    "def run(d):\n    return ().__class__.__bases__[0].__subclasses__()",
+    "def run(d):\n    return globals()",
+    "def run(d):\n    m = d.get('m', 'w')\n    open('/x', m)\n    return {}",
 ])
 def test_policy_blocks_dangerous_or_undeclared_code(src):
     assert statuses(code_package() | {"scripts/main.py": src})["python.policy:scripts/main.py"] == "fail"
+
+
+@pytest.mark.parametrize("src", [
+    "import ast\ndef run(d):\n    return {'line': getattr(ast.parse('x'), 'lineno', 1)}",  # reference Skill pattern
+    "def run(d):\n    return {'t': 'a-b'.replace('-', '_')}",
+    "def run(d):\n    with open('/tmp/x', encoding='utf-8') as f:\n        return {'t': f.read()}",
+    "def run(d):\n    return {'n': type(d).__name__}",
+])
+def test_policy_keeps_legitimate_code_passing(src):
+    assert statuses(code_package() | {"scripts/main.py": src})["python.policy:scripts/main.py"] == "pass"
 
 
 def test_missing_run_function():

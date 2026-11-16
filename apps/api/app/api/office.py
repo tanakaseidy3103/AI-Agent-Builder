@@ -5,11 +5,11 @@ Nothing here synthesizes activity.
 """
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import LOOPBACK, require_local
+from app.auth import LOOPBACK, foreign_origin, require_local
 from app.config import settings
 from app.db import get_session, get_session_factory
 from app.models import AgentEventRow, GenerationJob
@@ -43,11 +43,13 @@ def agents(s: Session = Depends(get_session)) -> list[dict]:
 
 
 @router.get("/events", dependencies=[Depends(require_local)])
-def events(after: int = 0, run_id: str | None = None, limit: int = 200, s: Session = Depends(get_session)) -> list[dict]:
+def events(after: int = Query(0, ge=0), run_id: str | None = Query(None, max_length=32),
+           limit: int = Query(200, ge=1, le=500), s: Session = Depends(get_session)) -> list[dict]:
+    # negative limit used to reach the database as LIMIT -1 (500 on Postgres); now a 422
     q = select(AgentEventRow).where(AgentEventRow.id > after)
     if run_id:
         q = q.where(AgentEventRow.run_id == run_id)
-    return [e.to_contract() for e in s.scalars(q.order_by(AgentEventRow.id).limit(min(limit, 500)))]
+    return [e.to_contract() for e in s.scalars(q.order_by(AgentEventRow.id).limit(limit))]
 
 
 @router.get("/runs/{run_id}/events", dependencies=[Depends(require_local)])
@@ -62,7 +64,7 @@ def run_events(run_id: str, s: Session = Depends(get_session)) -> dict:
 async def events_ws(ws: WebSocket, after: int = 0):
     # Same local-only rule as the REST routes.
     host = ws.client.host if ws.client else None
-    if settings.studio_local_only and host not in LOOPBACK:
+    if (settings.studio_local_only and host not in LOOPBACK) or foreign_origin(ws.headers.get("origin")):
         await ws.close(code=1008)
         return
     await ws.accept()
